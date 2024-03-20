@@ -20,6 +20,9 @@ from torch.nn.parallel import DistributedDataParallel as NativeDDP
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 
+import numpy as np
+import random
+
 from timm import utils
 from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 from timm.layers import convert_splitbn_model, convert_sync_batchnorm, set_fast_norm
@@ -51,12 +54,13 @@ parser.add_argument('--checkpoint-hist', default = 10, type = int)
 parser.add_argument('--resume', default = False, type = bool)
 parser.add_argument('--epochs', default = 300, type = int)
 parser.add_argument('--start-epoch', default = 0, type = int)
+parser.add_argument('--loss_alpha', default = 0.5, type = float, help  = 'Loss importance for classification')
 
 ## model parameters
 parser.add_argument('--model', help = 'name of the model', default = 'resnet50')
 parser.add_argument('--pretrained', default = True)
 parser.add_argument('--initial_checkpoint', default = None)
-parser.add_argument('--num_classes', default = 1000)
+# parser.add_argument('--num_classes', default = 1000)
 parser.add_argument('--gp', default=None, type=str, metavar='POOL',
                    help='Global pool type, one of (fast, avg, max, avgmax, avgmaxc). Model default if None.')
 parser.add_argument('--bn-momentum', type=float, default=None,
@@ -95,7 +99,7 @@ parser.add_argument('--sched', type=str, default='cosine', metavar='SCHEDULER',
                    help='LR scheduler (default: "step"')
 parser.add_argument('--sched-on-updates', action='store_true', default=False,
                    help='Apply LR scheduler step on update instead of epoch end.')
-parser.add_argument('--lr', type=float, default=0.4, metavar='LR',
+parser.add_argument('--lr', type=float, default=1.5e-3, metavar='LR',
                    help='learning rate, overrides lr-base if set (default: None)')
 parser.add_argument('--lr-base', type=float, default=0.4, metavar='LR',
                    help='base learning rate: lr = lr_base * global_batch_size / base_size')
@@ -117,9 +121,9 @@ parser.add_argument('--lr-cycle-limit', type=int, default=1, metavar='N',
                    help='learning rate cycle limit, cycles enabled if > 1')
 parser.add_argument('--lr-k-decay', type=float, default=1.0,
                    help='learning rate k-decay for cosine/poly (default: 1.0)')
-parser.add_argument('--warmup-lr', type=float, default=1e-3, metavar='LR',
+parser.add_argument('--warmup-lr', type=float, default=1e-4, metavar='LR',
                    help='warmup learning rate (default: 1e-5)')
-parser.add_argument('--min-lr', type=float, default=1e-5, metavar='LR',
+parser.add_argument('--min-lr', type=float, default=1e-4, metavar='LR',
                    help='lower lr bound for cyclic schedulers that hit 0 (default: 0)')
 # parser.add_argument('--epochs', type=int, default=10, metavar='N',
 #                    help='number of epochs to train (default: 300)')
@@ -236,13 +240,19 @@ args = parser.parse_args()
 
 _logger = logging.getLogger('train')
 
+
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed(42)
+
 ## train for one epoch
 def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, optimizer, device, lr_scheduler_values = [], lr_scheduler = None, log_writer = None):
     
     model.train()
     metric_logger = sl_utils.MetricLogger(delimiter =' ')
     header = 'TRAIN epoch: [{}]'.format(start_epoch)
-    start_step = start_epoch*len(train_dataloader)
+    start_step = start_epoch*len(train_dataloader) + 1
     
     for i, (input,depth, target) in enumerate(tqdm(train_dataloader)):
         optimizer.zero_grad()
@@ -254,8 +264,8 @@ def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, 
     
         loss1 = loss_cls(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
-        acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk = (1, 5))
-        loss = loss1 + loss2
+        acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk = (1,5))
+        loss = args.loss_alpha * loss1 + (1 - args.loss_alpha) * loss2
         loss.backward()
  
         metric_logger.update(mse = loss2.item())
@@ -299,13 +309,13 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
         
         loss1 = loss_fn(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
-        loss = loss1 + loss2
+        loss = args.loss_alpha * loss1 + (1 - args.loss_alpha) * loss2
         
         acc1, acc = utils.accuracy(predicted_class, target, topk = (1,5))
 
         metric_logger.update(mse = loss2.item())
         metric_logger.update(cce = loss1.item())
-        metric_logger.update(total_loss = loss.item())
+        metric_logger.update(loss = loss.item())
         metric_logger.update(top1_accuracy = acc1.item())
         metric_logger.update(top5_accuracy = acc.item())
         metric_logger.synchronize_between_processes()
@@ -321,9 +331,7 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
     return OrderedDict([('loss', metric_logger.loss.global_avg), ('top1', metric_logger.top1_accuracy.global_avg), ('top5', metric_logger.top5_accuracy.global_avg)])
 
 
-
 ## main function
-
 def main():
 
     num_epochs = args.epochs
@@ -339,6 +347,7 @@ def main():
             _logger.info(f'Training with a single process on 1 device ({args.device}).') 
         
         if args.log_wandb and args.log_dir != None:
+            print("This else executes!")
             os.makedirs(args.log_dir, exist_ok = True)
             log_writer = WandBLogger(log_dir = args.log_dir , args = args)
         else:
@@ -359,6 +368,8 @@ def main():
     sampler_eval = torch.utils.data.DistributedSampler(
         dataset_eval, num_replicas = args.world_size, rank = args.rank, shuffle = False
     )
+
+    print(f"World Size: {args.world_size}")
     ## create model
     in_chans = 3
 
@@ -367,7 +378,7 @@ def main():
         args.model,
         pretrained=args.pretrained,
         in_chans=in_chans,
-        num_classes=args.num_classes,
+        # num_classes=args.num_classes,
         drop_rate=args.drop,
         drop_path_rate=args.drop_path,
         drop_block_rate=args.drop_block,
@@ -469,7 +480,7 @@ def main():
             log_writer.set_step(epoch * num_training_steps_per_epoch)
 
         train_stats = train_one_epoch(model, epoch, loader_train, train_cls_loss_fn, train_recon_loss_fn, optimizer, device, lr_scheduler_values, lr_scheduler, log_writer)
-        val_stats   = validate(model, epoch, loader_eval, validate_cls_loss_fn, validate_recon_loss_fn, device, log_writer, epoch*num_training_steps_per_epoch)
+        val_stats = validate(model, epoch, loader_eval, validate_cls_loss_fn, validate_recon_loss_fn, device, log_writer, ((epoch+1)*num_training_steps_per_epoch)+1)
 
         if utils.is_primary(args) and saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch, metric = val_stats['loss'])

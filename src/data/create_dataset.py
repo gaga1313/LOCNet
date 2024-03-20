@@ -5,7 +5,7 @@ import numpy as np
 # import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
-from PIL import Image
+from PIL import Image, ImageOps
 # import albumentations as A
 import json
 
@@ -31,8 +31,9 @@ def get_image_transform():
 
 def get_depth_transform():
     return transforms.Compose([
+        transforms.ToTensor(),
         transforms.CenterCrop(224),
-        transforms.ToTensor()
+        
     ])
 
 
@@ -81,9 +82,9 @@ class LOCDataset(Dataset):
         depth_path = self.depth_maps[idx]
 
         image = Image.open(img_path).convert('RGB')
-        depth = Image.open(depth_path).convert('L')
-        # depth = depth.astype('float32')
-        # depth /= 255.0
+        depth = ImageOps.grayscale(Image.open(depth_path))
+        depth = np.array(depth).astype(np.float32)
+        depth /= 255.0
 
 
         
