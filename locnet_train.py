@@ -238,41 +238,45 @@ args = parser.parse_args()
 _logger = logging.getLogger('train')
 
 ## train for one epoch
-def train_one_epoch(model, start_epoch, train_dataloader, loss_fn, optimizer, device, lr_scheduler_values = [], lr_scheduler = None, log_writer = None):
+def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, optimizer, device, lr_scheduler_values = [], lr_scheduler = None, log_writer = None):
+    
     model.train()
     metric_logger = sl_utils.MetricLogger(delimiter = ' ')
     header = 'TRAIN epoch: [{}]'.format(start_epoch)
     start_step = start_epoch*len(train_dataloader)
+    
     for i, (input,depth, target) in enumerate(tqdm(train_dataloader)):
-        if utils.is_primary(args):
-
-            print(input.shape, depth.shape)
-
         optimizer.zero_grad()
-        input, target = input.to(device), target.to(device)
+        input, depth, target = input.to(device), depth.to(device), target.to(device)
         output  = model(input)
+        
         if isinstance(output, (tuple, list)):
-            output = output[0]
-        loss = loss_fn(output, target)
-        acc1, acc = sl_utils.accuracy(output, target, args, topk = (1,5))
+            predicted_depth_map, predicted_class = output
+    
+        loss1 = loss_cls(predicted_class, target)
+        loss2 = loss_recon(predicted_depth_map, depth)
+        acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk = (1,5))
+        loss = loss1 + loss2
         loss.backward()
  
+        metric_logger.update(mse = loss2.item())
+        metric_logger.update(cce = loss1.item())
         metric_logger.update(loss = loss.item())
         metric_logger.update(top1_accuracy = acc1.item())
         metric_logger.update(top5_accuracy = acc.item()) 
-        
-        
+          
         if len(lr_scheduler_values)>0:
             for k, param_group in enumerate(optimizer.param_groups):
                 param_group["lr"] = lr_scheduler_values[start_step+i] #* param_group['lr_scale']
         
         optimizer.step() 
         metric_logger.synchronize_between_processes()
-        
+
         if utils.is_primary(args) and log_writer!=None and ((start_step + i)%args.log_interval == 0):
-            # print('Writing Logs')
-            print('In log interval')
             log_writer.set_step(start_step+i)
+
+            log_writer.update(train_cce = metric_logger.cce.avg, head = 'train')
+            log_writer.update(train_mse = metric_logger.mse.avg, head = 'train')
             log_writer.update(train_loss = metric_logger.loss.avg, head = 'train')
             log_writer.update(train_top1_accuracy = metric_logger.top1_accuracy.avg, head = 'train')
             log_writer.update(train_top5_accuracy = metric_logger.top5_accuracy.avg, head = 'train')
@@ -282,33 +286,41 @@ def train_one_epoch(model, start_epoch, train_dataloader, loss_fn, optimizer, de
     return OrderedDict([('loss', metric_logger.loss.global_avg), ('top1', metric_logger.top1_accuracy.global_avg), ('top5', metric_logger.top5_accuracy.global_avg)])
 
 
-def validate(model, start_epoch, val_dataloader , loss_fn, device, log_writer = None):
+def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, log_writer = None, start_step = 0):
+    
     model.eval()
     metric_logger = sl_utils.MetricLogger(delimiter="  ")
     header = 'EVAL epoch: [{}]'.format(start_epoch)
-    #start_step = log_step
-    for i, (input, target) in enumerate(tqdm(val_dataloader)):
-        if utils.is_primary(args):
-            print(target)
-        input, target = input.to(device), target.to(device)
+
+    for i, (input,depth, target) in enumerate(tqdm(val_dataloader)):
+        input, depth, target = input.to(device), depth.to(device), target.to(device)
         output  = model(input)
         if isinstance(output, (tuple, list)):
-            output = output[0]
-        loss = loss_fn(output, target)
-        acc1, acc = utils.accuracy(output, target, topk = (1,5))
-     
-        metric_logger.update(loss = loss.item())
+            predicted_depth_map, predicted_class = output
+        
+        loss1 = loss_fn(predicted_class, target)
+        loss2 = loss_recon(predicted_depth_map, depth)
+        loss = loss1 + loss2
+        
+        acc1, acc = utils.accuracy(predicted_class, target, topk = (1,5))
+
+        metric_logger.update(mse = loss2.item())
+        metric_logger.update(cce = loss1.item())
+        metric_logger.update(total_loss = loss.item())
         metric_logger.update(top1_accuracy = acc1.item())
         metric_logger.update(top5_accuracy = acc.item())
         metric_logger.synchronize_between_processes()
         
     if utils.is_primary(args) and log_writer!=None:
-        log_writer.set_step(None)
+        log_writer.set_step(start_step)
+        log_writer.update(val_cce = metric_logger.cce.global_avg, head = 'val')
+        log_writer.update(val_mse = metric_logger.mse.global_avg, head = 'val')
         log_writer.update(val_loss = metric_logger.loss.global_avg, head = 'val')
         log_writer.update(val_top1_accuracy = metric_logger.top1_accuracy.global_avg, head = 'val')
         log_writer.update(val_top5_accuracy = metric_logger.top5_accuracy.global_avg, heaad = 'val')
         log_writer.update(commit=True, epoch = start_epoch, head = 'val')
     return OrderedDict([('loss', metric_logger.loss.global_avg), ('top1', metric_logger.top1_accuracy.global_avg), ('top5', metric_logger.top5_accuracy.global_avg)])
+
 
 
 ## main function
@@ -375,12 +387,10 @@ def main():
     if args.distributed:
         if utils.is_primary(args):
             _logger.info("Using native Torch DistributedDataParallel.")
-        model = NativeDDP(model, device_ids=[device], find_unused_parameters = True)
+        model = NativeDDP(model, device_ids=[device], find_unused_parameters = False)
 
-        
     loader_train = torch.utils.data.DataLoader(dataset_train, sampler = sampler_train, batch_size = args.batch_size)
     loader_eval = torch.utils.data.DataLoader(dataset_eval, sampler = sampler_eval, batch_size = args.batch_size)
-
 
     optimizer = create_optimizer_v2(
        model,
@@ -388,9 +398,8 @@ def main():
        **args.opt_kwargs,
     )
 
-    # optimizer = torch.optim.SGD(model.parameters(), lr = 0.01, momentum = 0.9)
-    loss_scaler = None
     # optionally resume from a checkpoint
+    loss_scaler = None
     resume_epoch = None
     if args.resume:
         resume_epoch = resume_checkpoint(
@@ -403,10 +412,13 @@ def main():
 
     # Can be made adaptable to BCE and other losses check pytorch_image_models repo
     if args.smoothing:
-        train_loss_fn = LabelSmoothingCrossEntropy(smoothing = args.smoothing).to(device)
+        train_cls_loss_fn = LabelSmoothingCrossEntropy(smoothing = args.smoothing).to(device)
     else:
-        train_loss_fn = nn.CrossEntropyLoss().to(device)
-    validate_loss_fn = nn.CrossEntropyLoss().to(device)
+        train_cls_loss_fn = nn.CrossEntropyLoss().to(device)
+    train_recon_loss_fn = nn.MSELoss()
+    
+    validate_cls_loss_fn = nn.CrossEntropyLoss().to(device)
+    validate_recon_loss_fn = nn.MSELoss()
 
     eval_metrics = "loss"
     model = model.to(device)
@@ -426,7 +438,7 @@ def main():
             max_history = args.checkpoint_hist
         )
 
-    num_training_steps_per_epoch = len(dataset_train)//args.batch_size//args.world_size
+    num_training_steps_per_epoch = len(loader_train)
     updates_per_epoch = (len(loader_train) + args.grad_accum_steps - 1) // args.grad_accum_steps
 
     lr_scheduler = None
@@ -457,8 +469,8 @@ def main():
         if utils.is_primary(args) and  log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch)
 
-        train_stats = train_one_epoch(model, epoch, loader_train, train_loss_fn, optimizer, device, lr_scheduler_values, lr_scheduler, log_writer)
-        val_stats   = validate(model, epoch, loader_eval, validate_loss_fn, device, log_writer)
+        train_stats = train_one_epoch(model, epoch, loader_train, train_cls_loss_fn, train_recon_loss_fn, optimizer, device, lr_scheduler_values, lr_scheduler, log_writer)
+        val_stats   = validate(model, epoch, loader_eval, validate_cls_loss_fn, validate_recon_loss_fn, device, log_writer, epoch*num_training_steps_per_epoch)
 
         if utils.is_primary(args) and saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch, metric = val_stats['loss'])
