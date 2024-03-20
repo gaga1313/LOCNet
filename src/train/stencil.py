@@ -1,7 +1,6 @@
 import argparse
 import logging
 import os
-import time
 from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
@@ -27,22 +26,17 @@ from timm.loss import JsdCrossEntropy, SoftTargetCrossEntropy, BinaryCrossEntrop
 from timm.models import create_model, safe_model_name, resume_checkpoint, load_checkpoint, model_parameters
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 # from timm.scheduler import create_scheduler_v2, scheduler_kwargs
-from timm.utils import ApexScaler, NativeScaler
 
 # device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-from locnet.models import *
-from locnet.data import LOCDataset, get_image_transform, get_depth_transform
-from sl_utils import WandBLogger
-import sl_utils
-
+from sltimmv2.models import *
+from src.sl_utils import WandBLogger
+from src import sl_utils
 
 parser = ArgumentParser(description = 'Pytorch Imagenet Training')
 
 parser.add_argument('--dataset', default = 'Imagenet')
-parser.add_argument('--train_data_dir', help = 'Path to the train dataset')
-parser.add_argument('--val_data_dir', help = 'Path to the val dataset')
-parser.add_argument('--depth_dir', help = 'depth_maps')
+parser.add_argument('--data_dir', help = 'Path to the dataset')
 parser.add_argument('--train_split', default = 'train', help = 'Train folder name')
 parser.add_argument('--val_split', default = 'val', help = 'Validation folder name')
 parser.add_argument('--batch_size', type = int, default = 128)
@@ -238,45 +232,51 @@ args = parser.parse_args()
 _logger = logging.getLogger('train')
 
 ## train for one epoch
-def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, optimizer, device, lr_scheduler_values = [], lr_scheduler = None, log_writer = None):
-    
+def train_one_epoch(model, start_epoch, train_dataloader, loss_fn, optimizer, device, lr_scheduler_values = [], lr_scheduler = None, log_writer = None):
     model.train()
-    metric_logger = sl_utils.MetricLogger(delimiter = ' ')
+    metric_logger = sl_utils.MetricLogger(delimiter =' ')
     header = 'TRAIN epoch: [{}]'.format(start_epoch)
     start_step = start_epoch*len(train_dataloader)
-    
-    for i, (input,depth, target) in enumerate(tqdm(train_dataloader)):
+    for i, (input,target) in enumerate(tqdm(train_dataloader)):
+
         optimizer.zero_grad()
-        input, depth, target = input.to(device), depth.to(device), target.to(device)
+        input, target = input.to(device), target.to(device)
         output  = model(input)
-        
         if isinstance(output, (tuple, list)):
-            predicted_depth_map, predicted_class = output
-    
-        loss1 = loss_cls(predicted_class, target)
-        loss2 = loss_recon(predicted_depth_map, depth)
-        acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk = (1,5))
-        loss = loss1 + loss2
+            output = output[0]
+        loss = loss_fn(output, target)
+        acc1, acc = sl_utils.accuracy(output, target, args, topk = (1, 5))
         loss.backward()
- 
-        metric_logger.update(mse = loss2.item())
-        metric_logger.update(cce = loss1.item())
+        # if args.distributed:
+        #     # loss = utils.reduce_tensor(loss.data, args.world_size)
+        #     # print(loss.item())
+        #     metric_logger.update(loss = loss.item())
+        #     # acc1 = utils.reduce_tensor(acc1, args.world_size)
+        #     metric_logger.update(top1_accuracy = acc1.item())
+        #     # acc = utils.reduce_tensor(acc, args.world_size)
+        #     metric_logger.update(top5_accuracy = acc.item())
+        # else:
         metric_logger.update(loss = loss.item())
         metric_logger.update(top1_accuracy = acc1.item())
         metric_logger.update(top5_accuracy = acc.item()) 
-          
+        
+        # # print(optimizer.param_groups)
+        # lrl = [param_group['lr'] for param_group in optimizer.param_groups] #current Learning rate
+        # lr = lrl[-1]
+        # if utils.is_primary(args) and lr_scheduler:
+        #     lr_scheduler.step(start_step + i)  
+        
         if len(lr_scheduler_values)>0:
             for k, param_group in enumerate(optimizer.param_groups):
                 param_group["lr"] = lr_scheduler_values[start_step+i] #* param_group['lr_scale']
         
         optimizer.step() 
         metric_logger.synchronize_between_processes()
-
+        
         if utils.is_primary(args) and log_writer!=None and ((start_step + i)%args.log_interval == 0):
-            log_writer.set_step(start_step+i)
-
-            log_writer.update(train_cce = metric_logger.cce.avg, head = 'train')
-            log_writer.update(train_mse = metric_logger.mse.avg, head = 'train')
+            # print('Writing Logs')
+            print('In log interval')
+            log_writer.set_step(None)
             log_writer.update(train_loss = metric_logger.loss.avg, head = 'train')
             log_writer.update(train_top1_accuracy = metric_logger.top1_accuracy.avg, head = 'train')
             log_writer.update(train_top5_accuracy = metric_logger.top5_accuracy.avg, head = 'train')
@@ -286,41 +286,44 @@ def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, 
     return OrderedDict([('loss', metric_logger.loss.global_avg), ('top1', metric_logger.top1_accuracy.global_avg), ('top5', metric_logger.top5_accuracy.global_avg)])
 
 
-def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, log_writer = None, start_step = 0):
-    
+def validate(model, start_epoch, val_dataloader , loss_fn, device, log_writer = None):
     model.eval()
     metric_logger = sl_utils.MetricLogger(delimiter="  ")
     header = 'EVAL epoch: [{}]'.format(start_epoch)
-
-    for i, (input,depth, target) in enumerate(tqdm(val_dataloader)):
-        input, depth, target = input.to(device), depth.to(device), target.to(device)
+    #start_step = log_step
+    for i, (input, target) in enumerate(tqdm(val_dataloader)):
+        if utils.is_primary(args):
+            print(target)
+        input, target = input.to(device), target.to(device)
         output  = model(input)
         if isinstance(output, (tuple, list)):
-            predicted_depth_map, predicted_class = output
-        
-        loss1 = loss_fn(predicted_class, target)
-        loss2 = loss_recon(predicted_depth_map, depth)
-        loss = loss1 + loss2
-        
-        acc1, acc = utils.accuracy(predicted_class, target, topk = (1,5))
-
-        metric_logger.update(mse = loss2.item())
-        metric_logger.update(cce = loss1.item())
-        metric_logger.update(total_loss = loss.item())
+            output = output[0]
+        loss = loss_fn(output, target)
+        acc1, acc = utils.accuracy(output, target, topk = (1,5))
+        # if utils.is_primary(args):
+        #     print(acc1.item(), acc.item(), f'world size : {args.world_size}')
+        loss.backward()
+        # if args.distributed:
+        #     loss = utils.reduce_tensor(loss.data, args.world_size)
+        #     metric_logger.update(loss = loss.item())
+        #     acc1 = utils.reduce_tensor(acc1, args.world_size)
+        #     metric_logger.update(top1_accuracy = acc1.item())
+        #     acc = utils.reduce_tensor(acc, args.world_size)
+        #     metric_logger.update(top5_accuracy = acc.item())
+        #     print(f'After reduce tensor {acc.item()} {acc1.item()}')
+        # else:
+        metric_logger.update(loss = loss.item())
         metric_logger.update(top1_accuracy = acc1.item())
         metric_logger.update(top5_accuracy = acc.item())
         metric_logger.synchronize_between_processes()
         
-    if utils.is_primary(args) and log_writer!=None:
-        log_writer.set_step(start_step)
-        log_writer.update(val_cce = metric_logger.cce.global_avg, head = 'val')
-        log_writer.update(val_mse = metric_logger.mse.global_avg, head = 'val')
-        log_writer.update(val_loss = metric_logger.loss.global_avg, head = 'val')
-        log_writer.update(val_top1_accuracy = metric_logger.top1_accuracy.global_avg, head = 'val')
-        log_writer.update(val_top5_accuracy = metric_logger.top5_accuracy.global_avg, heaad = 'val')
-        log_writer.update(commit=True, epoch = start_epoch, head = 'val')
+        if utils.is_primary(args) and log_writer!=None:
+            log_writer.set_step(None)
+            log_writer.update(val_loss = metric_logger.loss.global_avg, head = 'val')
+            log_writer.update(val_top1_accuracy = metric_logger.top1_accuracy.global_avg, head = 'val')
+            log_writer.update(val_top5_accuracy = metric_logger.top5_accuracy.global_avg, heaad = 'val')
+            log_writer.update(commit=True, epoch = start_epoch, head = 'val')
     return OrderedDict([('loss', metric_logger.loss.global_avg), ('top1', metric_logger.top1_accuracy.global_avg), ('top5', metric_logger.top5_accuracy.global_avg)])
-
 
 
 ## main function
@@ -346,20 +349,23 @@ def main():
             log_writer = None
 
     assert args.rank >= 0
+    dataset_train = create_dataset(
+            args.dataset,
+            root=args.data_dir,
+            split=args.train_split,
+            is_training=True,
+            batch_size=args.batch_size,
+            seed=1,
+        )
 
-    image_transformation = get_image_transform()
-    depth_transformation = get_depth_transform()
-    train_depth_dir = os.path.join(args.depth_dir, 'train')
-    dataset_train = LOCDataset(args.train_data_dir, train_depth_dir, image_transform = image_transformation, depth_transform=depth_transformation)
-    sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train, num_replicas = args.world_size, rank = args.rank, shuffle = True
+    dataset_eval = create_dataset(
+        args.dataset,
+        root=args.data_dir,
+        split=args.val_split,
+        is_training=False,
+        batch_size=args.batch_size,
     )
 
-    val_depth_dir = os.path.join(args.depth_dir, 'val' )
-    dataset_eval = LOCDataset(args.val_data_dir, val_depth_dir, image_transform = image_transformation, depth_transform= depth_transformation)
-    sampler_eval = torch.utils.data.DistributedSampler(
-        dataset_eval, num_replicas = args.world_size, rank = args.rank, shuffle = False
-    )
     ## create model
     in_chans = 3
 
@@ -387,10 +393,98 @@ def main():
     if args.distributed:
         if utils.is_primary(args):
             _logger.info("Using native Torch DistributedDataParallel.")
-        model = NativeDDP(model, device_ids=[device], find_unused_parameters = False)
+        model = NativeDDP(model, device_ids=[device], find_unused_parameters = True)
+    
 
-    loader_train = torch.utils.data.DataLoader(dataset_train, sampler = sampler_train, batch_size = args.batch_size)
-    loader_eval = torch.utils.data.DataLoader(dataset_eval, sampler = sampler_eval, batch_size = args.batch_size)
+    ## create data loader
+    # setup mixup / cutmix
+    num_aug_splits = 0
+    collate_fn = None
+    mixup_fn = None
+    mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
+    if mixup_active:
+        mixup_args = dict(
+            mixup_alpha=args.mixup,
+            cutmix_alpha=args.cutmix,
+            cutmix_minmax=args.cutmix_minmax,
+            prob=args.mixup_prob,
+            switch_prob=args.mixup_switch_prob,
+            mode=args.mixup_mode,
+            label_smoothing=args.smoothing,
+            num_classes=args.num_classes
+        )
+        if args.prefetcher:
+            assert not num_aug_splits  # collate conflict (need to support deinterleaving in collate mixup)
+            collate_fn = FastCollateMixup(**mixup_args)
+        else:
+            mixup_fn = Mixup(**mixup_args)
+
+    args.prefetcher = not args.no_prefetcher
+    # wrap dataset in AugMix helper
+    if num_aug_splits > 1:
+        dataset_train = AugMixDataset(dataset_train, num_splits=num_aug_splits)
+
+    # create data loaders w/ augmentation pipeiine
+    data_config = resolve_data_config(vars(args), model=model, verbose=utils.is_primary(args))
+    train_interpolation = args.train_interpolation
+    if args.no_aug or not train_interpolation:
+        train_interpolation = data_config['interpolation']
+
+
+    loader_train = create_loader(
+        dataset_train,
+        input_size=data_config['input_size'],
+        batch_size=args.batch_size,
+        is_training=True,
+        use_prefetcher=args.prefetcher,
+        no_aug=args.no_aug,
+        re_prob=args.reprob,
+        re_mode=args.remode,
+        re_count=args.recount,
+        re_split=args.resplit,
+        scale=args.scale,
+        ratio=args.ratio,
+        hflip=args.hflip,
+        vflip=args.vflip,
+        color_jitter=args.color_jitter,
+        auto_augment=args.aa,
+        num_aug_repeats=args.aug_repeats,
+        num_aug_splits=num_aug_splits,
+        interpolation=train_interpolation,
+        mean=data_config['mean'],
+        std=data_config['std'],
+        num_workers=args.workers,
+        distributed=args.distributed,
+        collate_fn=collate_fn,
+        pin_memory=args.pin_mem,
+        device=device,
+        use_multi_epochs_loader=args.use_multi_epochs_loader,
+        # worker_seeding=args.worker_seeding,
+    )
+
+    ##irrelevant
+    eval_workers = args.workers
+    if args.val_split:
+        if args.distributed and ('tfds' in args.dataset or 'wds' in args.dataset):
+            # FIXME reduces validation padding issues when using TFDS, WDS w/ workers and distributed training
+            eval_workers = min(2, args.workers)
+
+    loader_eval = create_loader(
+        dataset_eval,
+        input_size=data_config['input_size'],
+        batch_size=args.validation_batch_size or args.batch_size,
+        is_training=False,
+        use_prefetcher=args.prefetcher,
+        interpolation=data_config['interpolation'],
+        mean=data_config['mean'],
+        std=data_config['std'],
+        num_workers=eval_workers,
+        distributed=args.distributed,
+        crop_pct=data_config['crop_pct'],
+        pin_memory=args.pin_mem,
+        device=device,
+        )
+
 
     optimizer = create_optimizer_v2(
        model,
@@ -398,8 +492,9 @@ def main():
        **args.opt_kwargs,
     )
 
-    # optionally resume from a checkpoint
+    # optimizer = torch.optim.SGD(model.parameters(), lr = 0.01, momentum = 0.9)
     loss_scaler = None
+    # optionally resume from a checkpoint
     resume_epoch = None
     if args.resume:
         resume_epoch = resume_checkpoint(
@@ -412,13 +507,10 @@ def main():
 
     # Can be made adaptable to BCE and other losses check pytorch_image_models repo
     if args.smoothing:
-        train_cls_loss_fn = LabelSmoothingCrossEntropy(smoothing = args.smoothing).to(device)
+        train_loss_fn = LabelSmoothingCrossEntropy(smoothing = args.smoothing).to(device)
     else:
-        train_cls_loss_fn = nn.CrossEntropyLoss().to(device)
-    train_recon_loss_fn = nn.MSELoss()
-    
-    validate_cls_loss_fn = nn.CrossEntropyLoss().to(device)
-    validate_recon_loss_fn = nn.MSELoss()
+        train_loss_fn = nn.CrossEntropyLoss().to(device)
+    validate_loss_fn = nn.CrossEntropyLoss().to(device)
 
     eval_metrics = "loss"
     model = model.to(device)
@@ -438,10 +530,16 @@ def main():
             max_history = args.checkpoint_hist
         )
 
-    num_training_steps_per_epoch = len(loader_train)
+    num_training_steps_per_epoch = len(dataset_train)//args.batch_size//args.world_size
     updates_per_epoch = (len(loader_train) + args.grad_accum_steps - 1) // args.grad_accum_steps
-
+    # print(updates_per_epoch)
     lr_scheduler = None
+    # lr_scheduler, num_epochs = create_scheduler_v2(
+    #     optimizer,
+    #     **scheduler_kwargs(args),
+    #     updates_per_epoch= updates_per_epoch
+    # )
+
     lr_scheduler_values = []
     lr_scheduler_values = sl_utils.cosine_scheduler(
         args.lr, args.min_lr, args.epochs, num_training_steps_per_epoch,
@@ -467,19 +565,17 @@ def main():
             loader_train.sampler.set_epoch(epoch)
 
         if utils.is_primary(args) and  log_writer is not None:
+            # print(epoch * num_training_steps_per_epoch)
             log_writer.set_step(epoch * num_training_steps_per_epoch)
 
-        train_stats = train_one_epoch(model, epoch, loader_train, train_cls_loss_fn, train_recon_loss_fn, optimizer, device, lr_scheduler_values, lr_scheduler, log_writer)
-        val_stats   = validate(model, epoch, loader_eval, validate_cls_loss_fn, validate_recon_loss_fn, device, log_writer, epoch*num_training_steps_per_epoch)
+        # train_stats = train_one_epoch(model, epoch, loader_train, train_loss_fn, optimizer, device, lr_scheduler_values, lr_scheduler, log_writer)
+        val_stats   = validate(model, epoch, loader_eval, validate_loss_fn, device, log_writer)
 
         if utils.is_primary(args) and saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch, metric = val_stats['loss'])
 
         if utils.is_primary(args) and log_writer is not None:
             log_writer.flush()
-    
-    if utils.is_primary(args):
-        print(best_metric, best_epoch)
 
 
 if __name__ == '__main__':
