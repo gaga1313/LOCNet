@@ -31,8 +31,8 @@ from timm.utils import ApexScaler, NativeScaler
 
 # device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-from sltimmv2.models import *
-from sltimmv2.data import LOCDataset, get_image_transform, get_depth_transform
+from locnet.models import *
+from locnet.data import LOCDataset, get_image_transform, get_depth_transform
 from sl_utils import WandBLogger
 import sl_utils
 
@@ -339,11 +339,15 @@ def main():
     depth_transformation = get_depth_transform()
     train_depth_dir = os.path.join(args.depth_dir, 'train')
     dataset_train = LOCDataset(args.train_data_dir, train_depth_dir, image_transform = image_transformation, depth_transform=depth_transformation)
-
+    sampler_train = torch.utils.data.DistributedSampler(
+        dataset_train, num_replicas = args.world_size, rank = args.rank, shuffle = True
+    )
 
     val_depth_dir = os.path.join(args.depth_dir, 'val' )
-    dataset_eval = LOCDataset(args.val_data_dir, val_depth_dir, image_transform = image_transformation, depth_path= depth_transformation)
-
+    dataset_eval = LOCDataset(args.val_data_dir, val_depth_dir, image_transform = image_transformation, depth_transform= depth_transformation)
+    sampler_eval = torch.utils.data.DistributedSampler(
+        dataset_eval, num_replicas = args.world_size, rank = args.rank, shuffle = False
+    )
     ## create model
     in_chans = 3
 
@@ -374,8 +378,8 @@ def main():
         model = NativeDDP(model, device_ids=[device], find_unused_parameters = True)
 
         
-    loader_train = torch.utils.data.DataLoader(dataset_train, batch_size = args.batch_size, shuffle = True)
-    loader_eval = torch.utils.data.DataLoader(dataset_eval, batch_size = args.batch_size, shuffle = False)
+    loader_train = torch.utils.data.DataLoader(dataset_train, sampler = sampler_train, batch_size = args.batch_size)
+    loader_eval = torch.utils.data.DataLoader(dataset_eval, sampler = sampler_eval, batch_size = args.batch_size)
 
 
     optimizer = create_optimizer_v2(
