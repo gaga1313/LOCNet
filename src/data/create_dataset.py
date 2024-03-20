@@ -10,12 +10,12 @@ from PIL import Image, ImageOps
 import json
 
 def get_classes():
-    with open('/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/src/imagenet_sub_category.json', 'r') as file:
+    with open('/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/imagenet_sub_category.json', 'r') as file:
         data = json.load(file)
     return list(data.values())
 
 def get_num_labels():
-    with open('/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/src/IN_category_to_Human_category_idx.json', 'r') as file:
+    with open('/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/IN_category_to_Human_category_idx.json', 'r') as file:
         data = json.load(file)
     return data
 
