@@ -83,7 +83,7 @@ class UpBlockForUNetWithResNet50(nn.Module):
 class UNetWithResnet50Encoder(nn.Module):
     DEPTH = 6
 
-    def __init__(self, n_classes=2):
+    def __init__(self, n_classes=1):
         super().__init__()
         resnet = torchvision.models.resnet.resnet50(weights=None)
         down_blocks = []
@@ -124,12 +124,16 @@ class UNetWithResnet50Encoder(nn.Module):
                 continue
             pre_pools[f"layer_{i}"] = x
         # print(f'shape after down sample {x.shape}')
-        
+
         cls_pred = self.avg_pool(x)
         cls_pred = torch.flatten(cls_pred, start_dim = 1)
         cls_pred = self.classifier(cls_pred)
-
+        
         x = self.bridge(x)
+
+#        cls_pred = self.avg_pool(x)
+#        cls_pred = torch.flatten(cls_pred, start_dim = 1)
+#        cls_pred = self.classifier(cls_pred)
 
         # print(f'shape after bridge {x.shape}')
 
