@@ -16,11 +16,11 @@ import torch
 import torch.utils.data
 import numpy as np
 
-import sl_utils
+from src import sl_utils
 
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.data.dataset import IterableImageDataset, ImageDataset
-from timm.data.distributed_sampler import OrderedDistributedSampler, RepeatAugSampler
+from timm.data.distributed_sampler import RepeatAugSampler
 from timm.data.random_erasing import RandomErasing
 from timm.data.mixup import FastCollateMixup
 from timm.data.transforms_factory import create_transform
