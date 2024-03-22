@@ -23,6 +23,8 @@ from torch.utils.data.distributed import DistributedSampler
 import numpy as np
 import random
 
+import cv2
+
 from timm import utils
 from timm.data import create_dataset, create_loader, resolve_data_config, Mixup, FastCollateMixup, AugMixDataset
 from timm.layers import convert_splitbn_model, convert_sync_batchnorm, set_fast_norm
@@ -55,6 +57,9 @@ parser.add_argument('--resume', default = False, type = bool)
 parser.add_argument('--epochs', default = 300, type = int)
 parser.add_argument('--start-epoch', default = 0, type = int)
 parser.add_argument('--loss_alpha', default = 0.5, type = float, help  = 'Loss importance for classification')
+parser.add_argument('--loss_beta', default = 10, type = float , help = 'scaling parameter for MSE loss')
+parser.add_argument('--save-depth', type = bool, default = False)
+parser.add_argument('--save-ddir', default = None, type = str)
 
 ## model parameters
 parser.add_argument('--model', help = 'name of the model', default = 'resnet50')
@@ -265,7 +270,8 @@ def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, 
         loss1 = loss_cls(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
         acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk = (1,5))
-        loss = args.loss_alpha * loss1 + (1 - args.loss_alpha) * loss2
+        beta1 = loss1.item()
+        loss = args.loss_alpha * loss1 + (beta1 * args.loss_beta* loss2)
         loss.backward()
  
         metric_logger.update(mse = loss2.item())
@@ -301,6 +307,12 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
     metric_logger = sl_utils.MetricLogger(delimiter="  ")
     header = 'EVAL epoch: [{}]'.format(start_epoch)
 
+    if args.save_depth:
+        if args.save_ddir:
+            os.makedirs(args.save_ddir, exist_ok = True)
+        else:
+            args.save_depth = False
+
     for i, (input,depth, target) in enumerate(tqdm(val_dataloader)):
         input, depth, target = input.to(device), depth.to(device), target.to(device)
         output  = model(input)
@@ -309,7 +321,8 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
         
         loss1 = loss_fn(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
-        loss = args.loss_alpha * loss1 + (1 - args.loss_alpha) * loss2
+        beta1 = loss1.item()
+        loss = args.loss_alpha * loss1 + (beta1 * args.loss_beta* loss2)
         
         acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk = (1,5))
 
@@ -320,6 +333,18 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
         metric_logger.update(top5_accuracy = acc.item())
         metric_logger.synchronize_between_processes()
         
+
+        if utils.is_primary(args) and args.save_depth:
+            
+            depth *=255
+            depth = depth.detach().cpu().numpy().astype(np.uint8)
+            predicted_depth_map *255
+            predicted_depth_map = predicted_depth_map.detach().cpu().numpy().astype(np.uint8)
+
+            depth_target_pred_image = cv2.hconcat([depth[0][0], predicted_depth_map[0][0]])
+            cv2.imwrite(os.path.join(args.save_ddir, str(i)+'.png'), depth_target_pred_image)
+        
+
     if utils.is_primary(args) and log_writer!=None:
         log_writer.set_step(start_step)
         log_writer.update(val_cce = metric_logger.cce.global_avg, head = 'val')
@@ -328,6 +353,8 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
         log_writer.update(val_top1_accuracy = metric_logger.top1_accuracy.global_avg, head = 'val')
         log_writer.update(val_top5_accuracy = metric_logger.top5_accuracy.global_avg, heaad = 'val')
         log_writer.update(commit=True, epoch = start_epoch, head = 'val')
+        
+
     return OrderedDict([('loss', metric_logger.loss.global_avg), ('top1', metric_logger.top1_accuracy.global_avg), ('top5', metric_logger.top5_accuracy.global_avg)])
 
 

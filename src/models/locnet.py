@@ -95,6 +95,7 @@ class UNetWithResnet50Encoder(nn.Module):
                 down_blocks.append(bottleneck)
         self.down_blocks = nn.ModuleList(down_blocks)
         self.avg_pool = nn.AdaptiveAvgPool2d((1,1))
+        self.dropout = nn.Dropout(0.2)
         self.classifier = nn.Linear(2048, 16)
         self.bridge = Bridge(2048, 2048)
         up_blocks.append(UpBlockForUNetWithResNet50(2048, 1024))
@@ -127,6 +128,7 @@ class UNetWithResnet50Encoder(nn.Module):
 
         cls_pred = self.avg_pool(x)
         cls_pred = torch.flatten(cls_pred, start_dim = 1)
+        cls_pred = self.dropout(cls_pred)
         cls_pred = self.classifier(cls_pred)
         
         x = self.bridge(x)
