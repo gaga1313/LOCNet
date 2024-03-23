@@ -15,7 +15,7 @@ class ConvBlock(nn.Module):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, padding=padding, kernel_size=kernel_size, stride=stride)
         self.bn = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU()
         self.with_nonlinearity = with_nonlinearity
 
     def forward(self, x):
@@ -148,7 +148,7 @@ class UNetWithResnet50Encoder(nn.Module):
         x = self.out(x)
         del pre_pools
         if with_output_feature_map:
-            return x, output_feature_map, cls_pred
+            return x, cls_pred, output_feature_map
         else:
             return x, cls_pred
 

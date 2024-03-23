@@ -22,6 +22,7 @@ from torch.utils.data.distributed import DistributedSampler
 
 import numpy as np
 import random
+import shutil
 
 import cv2
 
@@ -252,12 +253,14 @@ torch.manual_seed(42)
 torch.cuda.manual_seed(42)
 
 ## train for one epoch
-def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, optimizer, device, lr_scheduler_values = [], lr_scheduler = None, log_writer = None):
+def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, optimizer, device, lr_scheduler_values = [], loss_annealing = [], lr_scheduler = None, log_writer = None):
     
     model.train()
     metric_logger = sl_utils.MetricLogger(delimiter =' ')
     header = 'TRAIN epoch: [{}]'.format(start_epoch)
     start_step = start_epoch*len(train_dataloader) + 1
+    
+    annealing_count = start_step // args.log_interval
     
     for i, (input,depth, target) in enumerate(tqdm(train_dataloader)):
         optimizer.zero_grad()
@@ -270,13 +273,14 @@ def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, 
         loss1 = loss_cls(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
         acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk = (1,5))
-        beta1 = loss1.item()
-        loss = args.loss_alpha * loss1 + (beta1 * args.loss_beta* loss2)
+        
+        loss = loss_annealing[annealing_count] * loss1 + args.loss_beta* loss2
         loss.backward()
  
-        metric_logger.update(mse = loss2.item())
-        metric_logger.update(cce = loss1.item())
+        metric_logger.update(mse = args.loss_beta*loss2.item())
+        metric_logger.update(cce = loss_annealing[annealing_count]*loss1.item())
         metric_logger.update(loss = loss.item())
+        metric_logger.update(scaled_mse = args.loss_beta* loss2.item())
         metric_logger.update(top1_accuracy = acc1.item())
         metric_logger.update(top5_accuracy = acc.item()) 
           
@@ -295,8 +299,12 @@ def train_one_epoch(model, start_epoch, train_dataloader, loss_cls, loss_recon, 
             log_writer.update(train_loss = metric_logger.loss.avg, head = 'train')
             log_writer.update(train_top1_accuracy = metric_logger.top1_accuracy.avg, head = 'train')
             log_writer.update(train_top5_accuracy = metric_logger.top5_accuracy.avg, head = 'train')
+            log_writer.update(train_scaled_mse = metric_logger.scaled_mse.avg, head = 'train')
             log_writer.update(epoch = start_epoch, head = 'train')
-            log_writer.update(commit=True, learning_rate = lr_scheduler_values[start_step+i], head = 'train')        
+            log_writer.update(loss_annealing = loss_annealing[annealing_count], head = 'train')
+            log_writer.update(commit=True, learning_rate = lr_scheduler_values[start_step+i], head = 'train')    
+
+            annealing_count = (start_step+i)//args.log_interval
         
     return OrderedDict([('loss', metric_logger.loss.global_avg), ('top1', metric_logger.top1_accuracy.global_avg), ('top5', metric_logger.top5_accuracy.global_avg)])
 
@@ -321,14 +329,15 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
         
         loss1 = loss_fn(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
-        beta1 = loss1.item()
-        loss = args.loss_alpha * loss1 + (beta1 * args.loss_beta* loss2)
+
+        loss = args.loss_alpha * loss1 + (args.loss_beta* loss2)
         
         acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk = (1,5))
 
         metric_logger.update(mse = loss2.item())
         metric_logger.update(cce = loss1.item())
         metric_logger.update(loss = loss.item())
+        metric_logger.update(scaled_mse = args.loss_beta* loss2.item())
         metric_logger.update(top1_accuracy = acc1.item())
         metric_logger.update(top5_accuracy = acc.item())
         metric_logger.synchronize_between_processes()
@@ -342,7 +351,7 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
             predicted_depth_map = predicted_depth_map.detach().cpu().numpy().astype(np.uint8)
 
             depth_target_pred_image = cv2.hconcat([depth[0][0], predicted_depth_map[0][0]])
-            cv2.imwrite(os.path.join(args.save_ddir, str(i)+'.png'), depth_target_pred_image)
+            cv2.imwrite(os.path.join(args.save_depth_dir, str(i)+'.png'), depth_target_pred_image)
         
 
     if utils.is_primary(args) and log_writer!=None:
@@ -352,6 +361,7 @@ def validate(model, start_epoch, val_dataloader, loss_fn, loss_recon, device, lo
         log_writer.update(val_loss = metric_logger.loss.global_avg, head = 'val')
         log_writer.update(val_top1_accuracy = metric_logger.top1_accuracy.global_avg, head = 'val')
         log_writer.update(val_top5_accuracy = metric_logger.top5_accuracy.global_avg, heaad = 'val')
+        log_writer.update(train_scaled_mse = metric_logger.scaled_mse.global_avg, head = 'val')
         log_writer.update(commit=True, epoch = start_epoch, head = 'val')
         
 
@@ -364,6 +374,10 @@ def main():
     num_epochs = args.epochs
     log_writer = None
     device = utils.init_distributed_device(args)
+
+    args.save_depth_dir = os.path.join(args.save_ddir, 'tmp')
+    args.best_depth_dir = os.path.join(args.save_ddir, 'best_model_depth')
+
     if utils.is_primary(args):
         print(f"Is distributed training : {args.distributed}")
         if args.distributed:
@@ -475,6 +489,9 @@ def main():
 
     num_training_steps_per_epoch = len(loader_train)
     updates_per_epoch = (len(loader_train) + args.grad_accum_steps - 1) // args.grad_accum_steps
+    annealing_steps = num_training_steps_per_epoch*args.epochs // args.log_interval + 1
+
+    annealing_values = sl_utils.frange_cycle_sigmoid(0.0, 1.0, annealing_steps, n_cycle=5, ratio=1.0)
 
     lr_scheduler = None
     lr_scheduler_values = []
@@ -507,7 +524,10 @@ def main():
         print(f'Warmup epochs - {args.warmup_epochs}')
         print(f'Loss alphs - {args.loss_alpha}')
         print(f'Label Smoothing - {args.smoothing}')
+        print(f'Total Annealing steps - {annealing_steps}')
+
     
+    best_val_loss = np.inf
     for epoch in range(start_epoch, num_epochs):
         if hasattr(dataset_train, 'set_epoch'):
                 dataset_train.set_epoch(epoch)
@@ -517,18 +537,24 @@ def main():
         if utils.is_primary(args) and  log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch)
 
-        train_stats = train_one_epoch(model, epoch, loader_train, train_cls_loss_fn, train_recon_loss_fn, optimizer, device, lr_scheduler_values, lr_scheduler, log_writer)
+        train_stats = train_one_epoch(model, epoch, loader_train, train_cls_loss_fn, train_recon_loss_fn, optimizer, device, lr_scheduler_values, annealing_values, lr_scheduler, log_writer)
         val_stats = validate(model, epoch, loader_eval, validate_cls_loss_fn, validate_recon_loss_fn, device, log_writer, ((epoch+1)*num_training_steps_per_epoch)+1)
 
         if utils.is_primary(args):
             print(f"Training::::: Loss={train_stats['loss']}, Top-1 Accuracy={train_stats['top1']}, Top-5 Accuracy={train_stats['top5']}")
             print(f"Validation::: Loss={val_stats['loss']}, Top-1 Accuracy={val_stats['top1']}, Top-5 Accuracy={val_stats['top5']}")
 
-        if utils.is_primary(args) and saver is not None:
-            best_metric, best_epoch = saver.save_checkpoint(epoch, metric = val_stats['loss'])
+        if utils.is_primary(args): 
+            if saver is not None:
+                best_metric, best_epoch = saver.save_checkpoint(epoch, metric = val_stats['loss'])
+            
+            if val_stats['loss']<best_val_loss:
+                shutil.move(args.save_depth_dir, args.best_depth_dir)
+                best_val_loss = val_stats['loss']
 
-        if utils.is_primary(args) and log_writer is not None:
-            log_writer.flush()
+            if log_writer is not None:
+                log_writer.flush()
+
     
     if utils.is_primary(args):
         print(best_metric, best_epoch)
