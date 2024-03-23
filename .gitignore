@@ -162,3 +162,5 @@ cython_debug/
 checkpoint/
 akash_after_bridge_checkpoints/
 akash_before_bridge_checkpoints/
+predicted_depthmaps/
+predicted_depth_maps/
