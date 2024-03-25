@@ -377,6 +377,9 @@ def main():
 
     args.save_depth_dir = os.path.join(args.save_ddir, 'tmp')
     args.best_depth_dir = os.path.join(args.save_ddir, 'best_model_depth')
+    if utils.is_primary(args):
+        os.makedirs(args.save_depth_dir, exist_ok = True)
+        os.makedirs(args.best_depth_dir, exist_ok = True)
 
     if utils.is_primary(args):
         print(f"Is distributed training : {args.distributed}")
@@ -491,7 +494,7 @@ def main():
     updates_per_epoch = (len(loader_train) + args.grad_accum_steps - 1) // args.grad_accum_steps
     annealing_steps = num_training_steps_per_epoch*args.epochs // args.log_interval + 1
 
-    annealing_values = sl_utils.frange_cycle_sigmoid(0.0, 1.0, annealing_steps, n_cycle=5, ratio=1.0)
+    annealing_values = sl_utils.frange_cycle_sigmoid(0.0, 1.0, annealing_steps, n_cycle=4, ratio=1.0)
 
     lr_scheduler = None
     lr_scheduler_values = []
@@ -548,9 +551,9 @@ def main():
             if saver is not None:
                 best_metric, best_epoch = saver.save_checkpoint(epoch, metric = val_stats['loss'])
             
-            if val_stats['loss']<best_val_loss:
-                shutil.move(args.save_depth_dir, args.best_depth_dir)
-                best_val_loss = val_stats['loss']
+            # if val_stats['loss']<best_val_loss:
+            #     shutil.copytree(args.save_depth_dir, args.best_depth_dir, dirs_exist_ok=True)
+            #     best_val_loss = val_stats['loss']
 
             if log_writer is not None:
                 log_writer.flush()
