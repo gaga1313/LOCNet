@@ -468,16 +468,19 @@ def set_weight_decay(
 
 
 class SubImageFolder(torchvision.datasets.ImageFolder):
-    def __init__(self, root, transform=None, target_transform=None,
-                 loader=torchvision.datasets.folder.default_loader, extensions=None, is_valid_file=None):
-        super(SubImageFolder, self).__init__(root=root, transform=transform, target_transform=target_transform,
-                                             loader=loader, is_valid_file=is_valid_file)
+    """
+    A subclass of the ImageFolder class from torchvision. Only load the subset of classes defined in the json file.
+    """
+    def __init__(self, root, transform):
+        super().__init__(root=root, transform=transform)
 
+    def find_classes(self, directory):
+        """
+        Overriding the original method to return only the classes that are defined in the json file.
+        """
         with open('/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/imagenet_sub_category.json',
                   'r') as file:
             data = json.load(file)
-        self.valid_classes = list(data.values())
-
-        self.samples = [sample for sample in self.samples if self.classes[sample[1]] in self.valid_classes]
-        self.imgs = self.samples  # Ensure compatibility with different torchvision versions
-        self.targets = [sample[1] for sample in self.samples]
+        classes = sorted(data.values())
+        class_to_idx = {cls: i for i, cls in enumerate(classes)}
+        return classes, class_to_idx
