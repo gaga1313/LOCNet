@@ -14,6 +14,7 @@ from torch import nn
 from torch.utils.data.dataloader import default_collate
 from torchvision.transforms.functional import InterpolationMode
 from transforms import get_mixup_cutmix
+from utils import SubImageFolder
 
 
 def train_one_epoch(model, criterion, optimizer, data_loader, device, epoch, args, model_ema=None, scaler=None):
@@ -136,7 +137,7 @@ def load_data(traindir, valdir, args):
         random_erase_prob = getattr(args, "random_erase", 0.0)
         ra_magnitude = getattr(args, "ra_magnitude", None)
         augmix_severity = getattr(args, "augmix_severity", None)
-        dataset = torchvision.datasets.ImageFolder(
+        dataset = SubImageFolder(
             traindir,
             presets.ClassificationPresetTrain(
                 crop_size=train_crop_size,
@@ -178,7 +179,7 @@ def load_data(traindir, valdir, args):
                 use_v2=args.use_v2,
             )
 
-        dataset_test = torchvision.datasets.ImageFolder(
+        dataset_test = SubImageFolder(
             valdir,
             preprocessing,
         )

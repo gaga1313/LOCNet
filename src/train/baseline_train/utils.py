@@ -4,11 +4,14 @@ import errno
 import hashlib
 import os
 import time
+import json
 from collections import defaultdict, deque, OrderedDict
 from typing import List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
+import torchvision
+from torchvision.datasets.folder import make_dataset
 
 
 class SmoothedValue:
@@ -462,3 +465,44 @@ def set_weight_decay(
         if len(params[key]) > 0:
             param_groups.append({"params": params[key], "weight_decay": params_weight_decay[key]})
     return param_groups
+
+
+class SubImageFolder(torchvision.datasets.ImageFolder):
+    def __init__(self, root, transform=None, target_transform=None,
+                 loader=torchvision.datasets.folder.default_loader, is_valid_file=None):
+        self.root = root
+        self.transform = transform
+        self.target_transform = target_transform
+        self.loader = loader
+
+        with open('/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/imagenet_sub_category.json',
+                  'r') as file:
+            data = json.load(file)
+
+        self.valid_classes = list(data.values())
+
+        if is_valid_file is not None:
+            self.is_valid_file = is_valid_file
+        else:
+            self.extensions = torchvision.datasets.folder.IMG_EXTENSIONS
+            self.is_valid_file = lambda x: torchvision.datasets.folder.has_file_allowed_extension(x, self.extensions)
+
+        self._find_valid_classes()
+
+        samples = make_dataset(self.root, self.class_to_idx, self.extensions, is_valid_file=self.is_valid_file)
+        self.samples = samples
+        self.targets = [s[1] for s in samples]
+
+        self.imgs = self.samples
+
+    def _find_valid_classes(self):
+        """
+        Overrides the ImageFolder _find_classes method to only include folders
+        specified in self.valid_classes.
+        """
+        if not self.valid_classes:
+            raise ValueError("Valid classes must be specified.")
+        class_to_idx = {cls_name: i for i, cls_name in enumerate(self.valid_classes)}
+        self.classes = self.valid_classes
+        self.class_to_idx = class_to_idx
+
