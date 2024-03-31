@@ -22,8 +22,8 @@ def get_num_labels():
 def get_image_transform():
 
     return transforms.Compose([
-        transforms.CenterCrop(224),
         transforms.ToTensor(),
+        transforms.CenterCrop(224),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225]),
     ])
@@ -60,8 +60,8 @@ class LOCDataset(Dataset):
         self.labels = []
 
         for cls_name in self.class_names:
-            class_dir = os.path.join(root_dir, 'n02504458' )
-            depth_map_dir = os.path.join(depth_path, 'n02504458')
+            class_dir = os.path.join(root_dir, cls_name)
+            depth_map_dir = os.path.join(depth_path, cls_name)
             image_files = os.listdir(class_dir)
 
             for img_file in image_files:
@@ -86,8 +86,6 @@ class LOCDataset(Dataset):
         depth = np.array(depth).astype(np.float32)
         depth /= 255.0
 
-
-        
         if self.image_transform:
             image = self.image_transform(image)
             depth = self.depth_transform(depth)

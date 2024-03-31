@@ -15,7 +15,7 @@ class ConvBlock(nn.Module):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, padding=padding, kernel_size=kernel_size, stride=stride)
         self.bn = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU()
         self.with_nonlinearity = with_nonlinearity
 
     def forward(self, x):
@@ -83,7 +83,7 @@ class UpBlockForUNetWithResNet50(nn.Module):
 class UNetWithResnet50Encoder(nn.Module):
     DEPTH = 6
 
-    def __init__(self, n_classes=2):
+    def __init__(self, n_classes=1):
         super().__init__()
         resnet = torchvision.models.resnet.resnet50(weights=None)
         down_blocks = []
@@ -95,6 +95,7 @@ class UNetWithResnet50Encoder(nn.Module):
                 down_blocks.append(bottleneck)
         self.down_blocks = nn.ModuleList(down_blocks)
         self.avg_pool = nn.AdaptiveAvgPool2d((1,1))
+        self.dropout = nn.Dropout(0.2)
         self.classifier = nn.Linear(2048, 16)
         self.bridge = Bridge(2048, 2048)
         up_blocks.append(UpBlockForUNetWithResNet50(2048, 1024))
@@ -124,12 +125,17 @@ class UNetWithResnet50Encoder(nn.Module):
                 continue
             pre_pools[f"layer_{i}"] = x
         # print(f'shape after down sample {x.shape}')
-        
+
         cls_pred = self.avg_pool(x)
         cls_pred = torch.flatten(cls_pred, start_dim = 1)
+        cls_pred = self.dropout(cls_pred)
         cls_pred = self.classifier(cls_pred)
-
+        
         x = self.bridge(x)
+
+#        cls_pred = self.avg_pool(x)
+#        cls_pred = torch.flatten(cls_pred, start_dim = 1)
+#        cls_pred = self.classifier(cls_pred)
 
         # print(f'shape after bridge {x.shape}')
 
@@ -142,7 +148,7 @@ class UNetWithResnet50Encoder(nn.Module):
         x = self.out(x)
         del pre_pools
         if with_output_feature_map:
-            return x, output_feature_map, cls_pred
+            return x, cls_pred, output_feature_map
         else:
             return x, cls_pred
 
