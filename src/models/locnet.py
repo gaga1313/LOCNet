@@ -11,9 +11,23 @@ class ConvBlock(nn.Module):
     Helper module that consists of a Conv -> BN -> ReLU
     """
 
-    def __init__(self, in_channels, out_channels, padding=1, kernel_size=3, stride=1, with_nonlinearity=True):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        padding=1,
+        kernel_size=3,
+        stride=1,
+        with_nonlinearity=True,
+    ):
         super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, padding=padding, kernel_size=kernel_size, stride=stride)
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            padding=padding,
+            kernel_size=kernel_size,
+            stride=stride,
+        )
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.LeakyReLU()
         self.with_nonlinearity = with_nonlinearity
@@ -34,8 +48,7 @@ class Bridge(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.bridge = nn.Sequential(
-            ConvBlock(in_channels, out_channels),
-            ConvBlock(out_channels, out_channels)
+            ConvBlock(in_channels, out_channels), ConvBlock(out_channels, out_channels)
         )
 
     def forward(self, x):
@@ -47,8 +60,14 @@ class UpBlockForUNetWithResNet50(nn.Module):
     Up block that encapsulates one up-sampling step which consists of Upsample -> ConvBlock -> ConvBlock
     """
 
-    def __init__(self, in_channels, out_channels, up_conv_in_channels=None, up_conv_out_channels=None,
-                 upsampling_method="conv_transpose"):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        up_conv_in_channels=None,
+        up_conv_out_channels=None,
+        upsampling_method="conv_transpose",
+    ):
         super().__init__()
 
         if up_conv_in_channels == None:
@@ -57,11 +76,13 @@ class UpBlockForUNetWithResNet50(nn.Module):
             up_conv_out_channels = out_channels
 
         if upsampling_method == "conv_transpose":
-            self.upsample = nn.ConvTranspose2d(up_conv_in_channels, up_conv_out_channels, kernel_size=2, stride=2)
+            self.upsample = nn.ConvTranspose2d(
+                up_conv_in_channels, up_conv_out_channels, kernel_size=2, stride=2
+            )
         elif upsampling_method == "bilinear":
             self.upsample = nn.Sequential(
-                nn.Upsample(mode='bilinear', scale_factor=2),
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1)
+                nn.Upsample(mode="bilinear", scale_factor=2),
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1),
             )
         self.conv_block_1 = ConvBlock(in_channels, out_channels)
         self.conv_block_2 = ConvBlock(out_channels, out_channels)
@@ -94,17 +115,29 @@ class UNetWithResnet50Encoder(nn.Module):
             if isinstance(bottleneck, nn.Sequential):
                 down_blocks.append(bottleneck)
         self.down_blocks = nn.ModuleList(down_blocks)
-        self.avg_pool = nn.AdaptiveAvgPool2d((1,1))
+        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.dropout = nn.Dropout(0.2)
         self.classifier = nn.Linear(2048, 16)
         self.bridge = Bridge(2048, 2048)
         up_blocks.append(UpBlockForUNetWithResNet50(2048, 1024))
         up_blocks.append(UpBlockForUNetWithResNet50(1024, 512))
         up_blocks.append(UpBlockForUNetWithResNet50(512, 256))
-        up_blocks.append(UpBlockForUNetWithResNet50(in_channels=128 + 64, out_channels=128,
-                                                    up_conv_in_channels=256, up_conv_out_channels=128))
-        up_blocks.append(UpBlockForUNetWithResNet50(in_channels=64 + 3, out_channels=64,
-                                                    up_conv_in_channels=128, up_conv_out_channels=64))
+        up_blocks.append(
+            UpBlockForUNetWithResNet50(
+                in_channels=128 + 64,
+                out_channels=128,
+                up_conv_in_channels=256,
+                up_conv_out_channels=128,
+            )
+        )
+        up_blocks.append(
+            UpBlockForUNetWithResNet50(
+                in_channels=64 + 3,
+                out_channels=64,
+                up_conv_in_channels=128,
+                up_conv_out_channels=64,
+            )
+        )
 
         self.up_blocks = nn.ModuleList(up_blocks)
 
@@ -127,15 +160,15 @@ class UNetWithResnet50Encoder(nn.Module):
         # print(f'shape after down sample {x.shape}')
 
         cls_pred = self.avg_pool(x)
-        cls_pred = torch.flatten(cls_pred, start_dim = 1)
+        cls_pred = torch.flatten(cls_pred, start_dim=1)
         cls_pred = self.dropout(cls_pred)
         cls_pred = self.classifier(cls_pred)
-        
+
         x = self.bridge(x)
 
-#        cls_pred = self.avg_pool(x)
-#        cls_pred = torch.flatten(cls_pred, start_dim = 1)
-#        cls_pred = self.classifier(cls_pred)
+        #        cls_pred = self.avg_pool(x)
+        #        cls_pred = torch.flatten(cls_pred, start_dim = 1)
+        #        cls_pred = self.classifier(cls_pred)
 
         # print(f'shape after bridge {x.shape}')
 
@@ -152,17 +185,17 @@ class UNetWithResnet50Encoder(nn.Module):
         else:
             return x, cls_pred
 
+
 # model = UNetWithResnet50Encoder().cuda()
 # inp = torch.rand((2, 3, 256, 256)).cuda()
 # out, cls_pred = model(inp)
 # print(out.shape, cls_pred.shape)
-        
+
 
 __all__ = []
 
-@register_model
-def locnet(pretrained = False, **kwargs):
-    model = UNetWithResnet50Encoder(n_classes = 1)
-    return model
 
-			
+@register_model
+def locnet(pretrained=False, **kwargs):
+    model = UNetWithResnet50Encoder(n_classes=1)
+    return model

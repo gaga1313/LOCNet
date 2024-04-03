@@ -1,46 +1,62 @@
 import os
 import torch
+
 # from skimage import io, transform
 import numpy as np
+
 # import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
 from PIL import Image, ImageOps
+
 # import albumentations as A
 import json
 
+
 def get_classes():
-    with open('/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/imagenet_sub_category.json', 'r') as file:
+    with open(
+        "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/imagenet_sub_category.json",
+        "r",
+    ) as file:
         data = json.load(file)
     return list(data.values())
 
+
 def get_num_labels():
-    with open('/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/IN_category_to_Human_category_idx.json', 'r') as file:
+    with open(
+        "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/IN_category_to_Human_category_idx.json",
+        "r",
+    ) as file:
         data = json.load(file)
     return data
 
+
 def get_image_transform():
 
-    return transforms.Compose([
-        transforms.ToTensor(),
-        transforms.CenterCrop(224),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
-    ])
+    return transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.CenterCrop(224),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
 
 def get_depth_transform():
-    return transforms.Compose([
-        transforms.ToTensor(),
-        transforms.CenterCrop(224),
-        
-    ])
+    return transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.CenterCrop(224),
+        ]
+    )
 
 
 class LOCDataset(Dataset):
     """Face Landmarks dataset."""
 
-    def __init__(self, root_dir, depth_path, image_transform=None, depth_transform = None):
+    def __init__(
+        self, root_dir, depth_path, image_transform=None, depth_transform=None
+    ):
         """
         Arguments:
             csv_file (string): Path to the csv file with annotations.
@@ -66,7 +82,7 @@ class LOCDataset(Dataset):
 
             for img_file in image_files:
                 self.images.append(os.path.join(class_dir, img_file))
-                depth_file = img_file.split('.')[0] + '_depth.JPEG'
+                depth_file = img_file.split(".")[0] + "_depth.JPEG"
                 self.depth_maps.append(os.path.join(depth_map_dir, depth_file))
                 self.labels.append(self.class_to_num[cls_name])
 
@@ -81,7 +97,7 @@ class LOCDataset(Dataset):
         label = self.labels[idx]
         depth_path = self.depth_maps[idx]
 
-        image = Image.open(img_path).convert('RGB')
+        image = Image.open(img_path).convert("RGB")
         depth = ImageOps.grayscale(Image.open(depth_path))
         depth = np.array(depth).astype(np.float32)
         depth /= 255.0
