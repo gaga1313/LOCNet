@@ -1,62 +1,22 @@
-import argparse
 import logging
 import os
-import time
 from collections import OrderedDict
-from contextlib import suppress
-from datetime import datetime
-from functools import partial
 from tqdm import tqdm
-from argparse import ArgumentParser
-from collections import deque
-from tqdm import tqdm
-
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-import torchvision.utils
-import yaml
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
-import torch.distributed as dist
-from torch.utils.data.distributed import DistributedSampler
-
 import numpy as np
 import random
-import shutil
-
 import cv2
-
 from timm import utils
-from timm.data import (
-    create_dataset,
-    create_loader,
-    resolve_data_config,
-    Mixup,
-    FastCollateMixup,
-    AugMixDataset,
-)
-from timm.layers import convert_splitbn_model, convert_sync_batchnorm, set_fast_norm
-from timm.loss import (
-    JsdCrossEntropy,
-    SoftTargetCrossEntropy,
-    BinaryCrossEntropy,
-    LabelSmoothingCrossEntropy,
-)
+from timm.loss import LabelSmoothingCrossEntropy
 from timm.models import (
     create_model,
     safe_model_name,
     resume_checkpoint,
-    load_checkpoint,
-    model_parameters,
 )
 from timm.optim import create_optimizer_v2, optimizer_kwargs
-
-# from timm.scheduler import create_scheduler_v2, scheduler_kwargs
-from timm.utils import ApexScaler, NativeScaler
-
-# device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-
-from src.models import *
 from src.data import LOCDataset, get_image_transform, get_depth_transform
 from src.sl_utils import WandBLogger
 from src import sl_utils
@@ -72,7 +32,7 @@ torch.manual_seed(42)
 torch.cuda.manual_seed(42)
 
 
-## train for one epoch
+# train for one epoch
 def train_one_epoch(
     model,
     start_epoch,
@@ -118,7 +78,6 @@ def train_one_epoch(
         loss.backward()
 
         if utils.is_primary(args) and args.save_depth:
-
             depth *= 255
             depth = depth.detach().cpu().numpy().astype(np.uint8)
             predicted_depth_map *= 255
@@ -273,20 +232,19 @@ def validate(
     )
 
 
-## main function
+# main function
 def main():
-
     num_epochs = args.epochs
     log_writer = None
     device = utils.init_distributed_device(args)
 
     args.save_depth_dir = os.path.join(args.save_ddir, "val_depth")
     args.train_depth_dir = os.path.join(args.save_ddir, "train_depth")
+
     if utils.is_primary(args):
         os.makedirs(args.save_depth_dir, exist_ok=True)
         os.makedirs(args.train_depth_dir, exist_ok=True)
 
-    if utils.is_primary(args):
         print(f"Is distributed training : {args.distributed}")
         if args.distributed:
             _logger.info(
@@ -328,22 +286,10 @@ def main():
         dataset_eval, num_replicas=args.world_size, rank=args.rank, shuffle=False
     )
 
-    ## create model
-    in_chans = 3
-
-    ## load custom model
+    # create model
     model = create_model(
         args.model,
         pretrained=args.pretrained,
-        in_chans=in_chans,
-        # num_classes=args.num_classes,
-        drop_rate=args.drop,
-        drop_path_rate=args.drop_path,
-        drop_block_rate=args.drop_block,
-        global_pool=args.gp,
-        bn_momentum=args.bn_momentum,
-        bn_eps=args.bn_eps,
-        # scriptable=args.torchscript,
         checkpoint_path=args.initial_checkpoint,
     )
     model = model.to(device)
@@ -414,9 +360,7 @@ def main():
         )
 
     num_training_steps_per_epoch = len(loader_train)
-    updates_per_epoch = (
-        len(loader_train) + args.grad_accum_steps - 1
-    ) // args.grad_accum_steps
+    updates_per_epoch = len(loader_train)
     annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
 
     annealing_values = sl_utils.frange_cycle_sigmoid(
@@ -424,7 +368,6 @@ def main():
     )
 
     lr_scheduler = None
-    lr_scheduler_values = []
     args.lr = args.warmup_lr * args.world_size
 
     lr_scheduler_values = sl_utils.cosine_scheduler(
@@ -460,7 +403,6 @@ def main():
         print(f"Total Annealing steps - {annealing_steps}")
         print(f"cce rest : {args.rest_cce}")
 
-    best_val_loss = np.inf
     for epoch in range(start_epoch, num_epochs):
         if hasattr(dataset_train, "set_epoch"):
             dataset_train.set_epoch(epoch)
@@ -508,10 +450,6 @@ def main():
                 best_metric, best_epoch = saver.save_checkpoint(
                     epoch, metric=val_stats["loss"]
                 )
-
-            # if val_stats['loss']<best_val_loss:
-            #     shutil.copytree(args.save_depth_dir, args.best_depth_dir, dirs_exist_ok=True)
-            #     best_val_loss = val_stats['loss']
 
             if log_writer is not None:
                 log_writer.flush()
