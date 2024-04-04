@@ -20,7 +20,7 @@ from timm.optim import create_optimizer_v2, optimizer_kwargs
 from src.data import LOCDataset, get_image_transform, get_depth_transform
 from src.sl_utils import WandBLogger
 from src import sl_utils
-
+from src.models import *
 from src.utils.args import args
 
 _logger = logging.getLogger("train")
@@ -73,8 +73,8 @@ def train_one_epoch(
         loss2 = loss_recon(predicted_depth_map, depth)
         acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk=(1, 5))
 
-        # loss = init_cce * loss_annealing[anneal_step + i] * loss1 + args.loss_beta* loss2
-        loss = 0.0 * loss1 + args.loss_beta * loss2
+        loss = init_cce * loss_annealing[anneal_step + i] * loss1 + args.loss_beta* loss2
+        # loss = 0.0 * loss1 + args.loss_beta * loss2
         loss.backward()
 
         if utils.is_primary(args) and args.save_depth:
@@ -95,7 +95,7 @@ def train_one_epoch(
 
         metric_logger.update(mse=loss2.item())
         metric_logger.update(cce=loss1.item())
-        # metric_logger.update(an_cce = loss_annealing[anneal_step + i]*loss1.item())
+        metric_logger.update(an_cce = loss_annealing[anneal_step + i]*loss1.item())
         metric_logger.update(scaled_mse=args.loss_beta * loss2.item())
         metric_logger.update(loss=loss.item())
         metric_logger.update(top1_accuracy=acc1.item())
@@ -129,9 +129,9 @@ def train_one_epoch(
             log_writer.update(
                 train_scaled_mse=metric_logger.scaled_mse.avg, head="train"
             )
-            # log_writer.update(train_ann_cce = metric_logger.an_cce.avg, head = 'train')
+            log_writer.update(train_ann_cce = metric_logger.an_cce.avg, head = 'train')
             log_writer.update(epoch=start_epoch, head="train")
-            # log_writer.update(loss_annealing = loss_annealing[anneal_step + i], head = 'train')
+            log_writer.update(loss_annealing = loss_annealing[anneal_step + i], head = 'train')
             log_writer.update(
                 commit=True,
                 learning_rate=lr_scheduler_values[start_step + i],
@@ -364,7 +364,7 @@ def main():
     annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
 
     annealing_values = sl_utils.frange_cycle_sigmoid(
-        0.0, 1.0, annealing_steps, n_cycle=4, ratio=1.0
+        0.0, 1.0, annealing_steps, n_cycle=1, ratio=.25
     )
 
     lr_scheduler = None

@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from timm import utils
 
 
 parser = ArgumentParser(description="Pytorch Imagenet Training")
