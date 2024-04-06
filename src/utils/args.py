@@ -32,7 +32,7 @@ parser.add_argument("--initial_checkpoint", default=None)
 parser.add_argument("--checkpoint-hist", default=10, type=int)
 parser.add_argument("--grad-accum-steps", default=1)
 parser.add_argument(
-    "--smoothing", type=float, default=0.01, help="Label smoothing (default: 0.1)"
+    "--smoothing", type=float, default=None, help="Label smoothing (default: None)"
 )
 parser.add_argument(
     "--output",
