@@ -134,7 +134,6 @@ def train_one_epoch(
                 train_top5_accuracy=metric_logger.top5_accuracy.avg, head="train"
             )
             log_writer.update(
-                commit=True,
                 learning_rate=lr_scheduler_values[start_step + i],
                 head="train",
             )
@@ -146,7 +145,9 @@ def train_one_epoch(
             )
             log_writer.update(epoch=epoch, head="train")
             log_writer.update(
-                loss_annealing=loss_annealing[anneal_step + i], head="train"
+                commit=True,
+                loss_annealing=loss_annealing[anneal_step + i],
+                head="train",
             )
 
     return OrderedDict(
@@ -432,7 +433,7 @@ def main():
             validate_recon_loss_fn,
             device,
             log_writer,
-            ((epoch + 1) * num_training_steps_per_epoch) + 1,
+            ((epoch + 1) * num_training_steps_per_epoch),
         )
 
         if utils.is_primary(args):
