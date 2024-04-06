@@ -2,13 +2,16 @@ import logging
 import os
 from collections import OrderedDict
 from tqdm import tqdm
+import numpy as np
+import random
+import cv2
+
+
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.parallel import DistributedDataParallel as NativeDDP
-import numpy as np
-import random
-import cv2
+
 from timm import utils
 from timm.loss import LabelSmoothingCrossEntropy
 from timm.models import (
@@ -17,6 +20,8 @@ from timm.models import (
     resume_checkpoint,
 )
 from timm.optim import create_optimizer_v2, optimizer_kwargs
+
+
 from src.data import LOCDataset, get_image_transform, get_depth_transform
 from src.sl_utils import WandBLogger
 from src import sl_utils
@@ -35,7 +40,7 @@ torch.cuda.manual_seed(42)
 # train for one epoch
 def train_one_epoch(
     model,
-    start_epoch,
+    epoch,
     train_dataloader,
     loss_cls,
     loss_recon,
@@ -44,40 +49,41 @@ def train_one_epoch(
     device,
     lr_scheduler_values=[],
     loss_annealing=[],
-    lr_scheduler=None,
     log_writer=None,
 ):
-
     model.train()
+
     metric_logger = sl_utils.MetricLogger(delimiter=" ")
-    header = "TRAIN epoch: [{}]".format(start_epoch)
-    start_step = start_epoch * len(train_dataloader) + 1
-    anneal_step = (start_epoch - rest_cce) * len(train_dataloader)
+    start_step = epoch * len(train_dataloader) + 1
+
+    anneal_step = (epoch - rest_cce) * len(train_dataloader)
     if anneal_step < 0:
         anneal_step = 0
 
-    if start_epoch >= rest_cce:
-        init_cce = 1.0
+    if epoch >= rest_cce:
+        loss_alpha = args.loss_alpha
     else:
-        init_cce = 0.0
+        loss_alpha = 0.0
 
     for i, (input, depth, target) in enumerate(tqdm(train_dataloader)):
-        optimizer.zero_grad()
         input, depth, target = input.to(device), depth.to(device), target.to(device)
+
+        optimizer.zero_grad()
         output = model(input)
 
-        if isinstance(output, (tuple, list)):
-            predicted_depth_map, predicted_class = output
+        predicted_depth_map, predicted_class = output
 
         loss1 = loss_cls(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
-        acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk=(1, 5))
-
-        loss = init_cce * loss_annealing[anneal_step + i] * loss1 + args.loss_beta* loss2
-        # loss = 0.0 * loss1 + args.loss_beta * loss2
+        loss = (
+            loss_alpha * loss_annealing[anneal_step + i] * loss1
+            + args.loss_beta * loss2
+        )
         loss.backward()
 
-        if utils.is_primary(args) and args.save_depth:
+        acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
+
+        if utils.is_primary(args) and args.save_ddir != None:
             depth *= 255
             depth = depth.detach().cpu().numpy().astype(np.uint8)
             predicted_depth_map *= 255
@@ -95,17 +101,17 @@ def train_one_epoch(
 
         metric_logger.update(mse=loss2.item())
         metric_logger.update(cce=loss1.item())
-        metric_logger.update(an_cce = loss_annealing[anneal_step + i]*loss1.item())
+        metric_logger.update(
+            scale_cce=loss_alpha * loss_annealing[anneal_step + i] * loss1.item()
+        )
         metric_logger.update(scaled_mse=args.loss_beta * loss2.item())
         metric_logger.update(loss=loss.item())
         metric_logger.update(top1_accuracy=acc1.item())
-        metric_logger.update(top5_accuracy=acc.item())
+        metric_logger.update(top5_accuracy=acc5.item())
 
         if len(lr_scheduler_values) > 0:
             for k, param_group in enumerate(optimizer.param_groups):
-                param_group["lr"] = lr_scheduler_values[
-                    start_step + i
-                ]  # * param_group['lr_scale']
+                param_group["lr"] = lr_scheduler_values[start_step + i]
 
         optimizer.step()
         metric_logger.synchronize_between_processes()
@@ -115,7 +121,6 @@ def train_one_epoch(
             and log_writer != None
             and ((start_step + i) % args.log_interval == 0)
         ):
-
             log_writer.set_step(start_step + i)
             log_writer.update(train_cce=metric_logger.cce.avg, head="train")
             log_writer.update(train_mse=metric_logger.mse.avg, head="train")
@@ -127,23 +132,26 @@ def train_one_epoch(
                 train_top5_accuracy=metric_logger.top5_accuracy.avg, head="train"
             )
             log_writer.update(
-                train_scaled_mse=metric_logger.scaled_mse.avg, head="train"
-            )
-            log_writer.update(train_ann_cce = metric_logger.an_cce.avg, head = 'train')
-            log_writer.update(epoch=start_epoch, head="train")
-            log_writer.update(loss_annealing = loss_annealing[anneal_step + i], head = 'train')
-            log_writer.update(
                 commit=True,
                 learning_rate=lr_scheduler_values[start_step + i],
                 head="train",
             )
-            # annealing_count = (start_step+i)//args.log_interval
+            log_writer.update(
+                train_scaled_mse=metric_logger.scaled_mse.avg, head="train"
+            )
+            log_writer.update(
+                train_scale_cce=metric_logger.scaled_cce.avg, head="train"
+            )
+            log_writer.update(epoch=epoch, head="train")
+            log_writer.update(
+                loss_annealing=loss_annealing[anneal_step + i], head="train"
+            )
 
     return OrderedDict(
         [
-            ("loss", metric_logger.loss.global_avg),
-            ("top1", metric_logger.top1_accuracy.global_avg),
-            ("top5", metric_logger.top5_accuracy.global_avg),
+            ("loss", metric_logger.loss.avg),
+            ("top1", metric_logger.top1_accuracy.avg),
+            ("top5", metric_logger.top5_accuracy.avg),
         ]
     )
 
@@ -158,54 +166,48 @@ def validate(
     log_writer=None,
     start_step=0,
 ):
-
     model.eval()
     metric_logger = sl_utils.MetricLogger(delimiter="  ")
-    header = "EVAL epoch: [{}]".format(start_epoch)
 
-    if args.save_depth:
-        if args.save_ddir:
-            os.makedirs(args.save_ddir, exist_ok=True)
-        else:
-            args.save_depth = False
+    if args.save_ddir != None:
+        os.makedirs(args.save_ddir, exist_ok=True)
 
-    for i, (input, depth, target) in enumerate(tqdm(val_dataloader)):
-        input, depth, target = input.to(device), depth.to(device), target.to(device)
-        output = model(input)
-        if isinstance(output, (tuple, list)):
+    with torch.no_grad():
+        for i, (input, depth, target) in enumerate(tqdm(val_dataloader)):
+            input, depth, target = input.to(device), depth.to(device), target.to(device)
+
+            output = model(input)
             predicted_depth_map, predicted_class = output
 
-        loss1 = loss_fn(predicted_class, target)
-        loss2 = loss_recon(predicted_depth_map, depth)
+            loss1 = loss_fn(predicted_class, target)
+            loss2 = loss_recon(predicted_depth_map, depth)
+            loss = args.loss_alpha * loss1 + (args.loss_beta * loss2)
 
-        loss = args.loss_alpha * loss1 + (args.loss_beta * loss2)
+            acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
 
-        acc1, acc = sl_utils.accuracy(predicted_class, target, args, topk=(1, 5))
+            metric_logger.update(mse=loss2.item())
+            metric_logger.update(cce=loss1.item())
+            metric_logger.update(loss=loss.item())
 
-        metric_logger.update(mse=loss2.item())
-        metric_logger.update(cce=loss1.item())
-        metric_logger.update(loss=loss.item())
-        metric_logger.update(scaled_mse=args.loss_beta * loss2.item())
-        metric_logger.update(top1_accuracy=acc1.item())
-        metric_logger.update(top5_accuracy=acc.item())
-        metric_logger.synchronize_between_processes()
+            metric_logger.update(top1_accuracy=acc1.item())
+            metric_logger.update(top5_accuracy=acc5.item())
+            metric_logger.synchronize_between_processes()
 
-        if utils.is_primary(args) and args.save_depth:
+            if utils.is_primary(args) and args.save_ddir != None:
+                depth *= 255
+                depth = depth.detach().cpu().numpy().astype(np.uint8)
+                predicted_depth_map *= 255
+                predicted_depth_map = (
+                    predicted_depth_map.detach().cpu().numpy().astype(np.uint8)
+                )
 
-            depth *= 255
-            depth = depth.detach().cpu().numpy().astype(np.uint8)
-            predicted_depth_map *= 255
-            predicted_depth_map = (
-                predicted_depth_map.detach().cpu().numpy().astype(np.uint8)
-            )
-
-            depth_target_pred_image = cv2.hconcat(
-                [depth[0][0], predicted_depth_map[0][0]]
-            )
-            cv2.imwrite(
-                os.path.join(args.save_depth_dir, str(i) + ".png"),
-                depth_target_pred_image,
-            )
+                depth_target_pred_image = cv2.hconcat(
+                    [depth[0][0], predicted_depth_map[0][0]]
+                )
+                cv2.imwrite(
+                    os.path.join(args.save_depth_dir, str(i) + ".png"),
+                    depth_target_pred_image,
+                )
 
     if utils.is_primary(args) and log_writer != None:
         log_writer.set_step(start_step)
@@ -217,9 +219,6 @@ def validate(
         )
         log_writer.update(
             val_top5_accuracy=metric_logger.top5_accuracy.global_avg, heaad="val"
-        )
-        log_writer.update(
-            train_scaled_mse=metric_logger.scaled_mse.global_avg, head="val"
         )
         log_writer.update(commit=True, epoch=start_epoch, head="val")
 
@@ -264,9 +263,12 @@ def main():
 
     image_transformation = get_image_transform()
     depth_transformation = get_depth_transform()
+
     train_depth_dir = os.path.join(args.depth_dir, "train")
+    train_image_dir = os.path.join(args.image_dir, "train")
+
     dataset_train = LOCDataset(
-        args.train_data_dir,
+        train_image_dir,
         train_depth_dir,
         image_transform=image_transformation,
         depth_transform=depth_transformation,
@@ -276,8 +278,10 @@ def main():
     )
 
     val_depth_dir = os.path.join(args.depth_dir, "val")
+    val_image_dir = os.path.join(args.image_dir, "val")
+
     dataset_eval = LOCDataset(
-        args.val_data_dir,
+        val_image_dir,
         val_depth_dir,
         image_transform=image_transformation,
         depth_transform=depth_transformation,
@@ -336,10 +340,10 @@ def main():
         )
     else:
         train_cls_loss_fn = nn.CrossEntropyLoss().to(device)
-    train_recon_loss_fn = nn.MSELoss()
+    train_recon_loss_fn = nn.MSELoss().to(device)  # reconstruction Loss
 
     validate_cls_loss_fn = nn.CrossEntropyLoss().to(device)
-    validate_recon_loss_fn = nn.MSELoss()
+    validate_recon_loss_fn = nn.MSELoss().to(device)
 
     eval_metrics = "loss"
     model = model.to(device)
@@ -361,13 +365,12 @@ def main():
 
     num_training_steps_per_epoch = len(loader_train)
     updates_per_epoch = len(loader_train)
-    annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
 
+    annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
     annealing_values = sl_utils.frange_cycle_sigmoid(
-        0.0, 1.0, annealing_steps, n_cycle=1, ratio=.25
+        0.0, 1.0, annealing_steps, n_cycle=1, ratio=0.25
     )
 
-    lr_scheduler = None
     args.lr = args.warmup_lr * args.world_size
 
     lr_scheduler_values = sl_utils.cosine_scheduler(
@@ -384,11 +387,6 @@ def main():
         start_epoch = args.start_epoch
     elif resume_epoch is not None:
         start_epoch = resume_epoch
-    if lr_scheduler is not None and start_epoch > 0:
-        if args.sched_on_updates:
-            lr_scheduler.step_update(start_epoch * updates_per_epoch)
-        else:
-            lr_scheduler.step(start_epoch)
 
     if utils.is_primary(args):
         print("Parameters used")
@@ -423,7 +421,6 @@ def main():
             device,
             lr_scheduler_values,
             annealing_values,
-            lr_scheduler,
             log_writer,
         )
         val_stats = validate(

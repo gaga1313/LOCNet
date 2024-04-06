@@ -32,7 +32,6 @@ def get_num_labels():
 
 
 def get_image_transform():
-
     return transforms.Compose(
         [
             transforms.ToTensor(),
@@ -107,3 +106,76 @@ class LOCDataset(Dataset):
             depth = self.depth_transform(depth)
 
         return image, depth, label
+
+
+class GeiDataset(Dataset):
+    """Face Landmarks dataset."""
+
+    def __init__(self, root_dir, filter, image_transform=None, depth_transform=None):
+        """
+        Arguments:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.root_dir = root_dir
+        self.image_transform = image_transform
+        self.class_to_num = get_num_labels()
+        self.class_names = sorted(get_classes())
+
+        self.images = []
+        self.labels = []
+
+        folder_style1 = [
+            "colour",
+            "contrast",
+            "ediolon1",
+            "ediolon11",
+            "ediolon111",
+            "false-colour",
+            "high-pass",
+            "low-pass",
+            "phase=scrambling",
+            "power-equalisation",
+            "rotation",
+            "silhoutte",
+            "sketch",
+            "stylized",
+            "uniform-noise",
+        ]
+
+        if filter in folder_style1:
+            root_dir = os.path.join(root_dir, filter, "dnn", "session-1")
+            image_paths = os.listdir(root_dir)
+            for img in image_paths:
+                _, _, _, _, cls, _, _, _ = img.split("_")
+                self.labels.append(self.class_to_num[cls])
+                self.images.append(os.path.join(root_dir, img))
+
+        else:
+            root_dir = os.path.join(root_dir, filter)
+            class_names = os.listdir(root_dir)
+            for cls in class_names:
+                class_dir = os.paht.join(root_dir, cls)
+                images_paths = os.listdir(class_dir)
+                for img in images_paths:
+                    self.images.append(os.path.join(class_dir, img))
+                    self.labels.append(self.class_to_num[cls])
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img_path = self.images[idx]
+        label = self.labels[idx]
+
+        image = Image.open(img_path).convert("RGB")
+
+        if self.image_transform:
+            image = self.image_transform(image)
+
+        return image, label

@@ -30,7 +30,6 @@ jnp.random.seed(42)
 
 
 class hConvGruCell(nn.Module):
-
     def __init__(
         self,
         input_size,
@@ -40,7 +39,6 @@ class hConvGruCell(nn.Module):
         layernorm=False,
         timesteps=8,
     ):
-
         super().__init__()
 
         self.padding = kernel_size // 2
@@ -109,14 +107,12 @@ class hConvGruCell(nn.Module):
         init.constant_(self.mu, 1)
 
     def forward(self, input_, prev_state2, timestep=0):
-
         if timestep == 0:
             prev_state2 = torch.empty_like(input_)
             init.xavier_normal_(prev_state2)
 
         i = timestep
         if self.batchnorm:
-
             g1_t = torch.sigmoid(self.bn[i * 4 + 0](self.u1_gate(prev_state2)))
             c1_t = self.bn[i * 4 + 1](
                 F.conv2d(prev_state2 * g1_t, self.w_gate_inh, padding=self.padding)
@@ -153,7 +149,6 @@ class hConvGruCell(nn.Module):
 
 
 class hConvGru(nn.Module):
-
     def __init__(self, timesteps=8, filt_size=9):
         super().__init__()
 
@@ -179,7 +174,6 @@ class hConvGru(nn.Module):
         self.dense1 = nn.Linear(2, self.num_classes)
 
     def forward(self, x):
-
         x = self.conv0(x)
         x = self.bnip(x)  ## jax had running average
         print(f"First conv layer passed output shape {x.shape}")
@@ -198,7 +192,6 @@ class hConvGru(nn.Module):
 
 
 class hConvGruResNet(nn.Module):
-
     def __init__(self):
         super().__init__()
 

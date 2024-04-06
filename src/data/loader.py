@@ -83,7 +83,6 @@ def adapt_to_chs(x, n):
 
 
 class PrefetchLoader:
-
     def __init__(
         self,
         loader,
@@ -98,7 +97,6 @@ class PrefetchLoader:
         re_count=1,
         re_num_splits=0,
     ):
-
         mean = adapt_to_chs(mean, channels)
         std = adapt_to_chs(std, channels)
         normalization_shape = (1, channels, 1, 1)
@@ -137,7 +135,6 @@ class PrefetchLoader:
             stream_context = suppress
 
         for next_input, next_target in self.loader:
-
             with stream_context():
                 next_input = next_input.to(device=self.device, non_blocking=True)
                 next_target = next_target.to(device=self.device, non_blocking=True)
@@ -399,7 +396,6 @@ def create_loader(
 
 
 class MultiEpochsDataLoader(torch.utils.data.DataLoader):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._DataLoader__initialized = False

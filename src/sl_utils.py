@@ -549,7 +549,7 @@ class WandBLogger(object):
         pass
 
 
-def accuracy(output, target, args, topk=(1,)):
+def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
     maxk = min(max(topk), output.size()[1])
     batch_size = target.size(0)
@@ -575,7 +575,6 @@ def frange_cycle_sigmoid(start, stop, n_epoch, n_cycle=4, ratio=0.5):
     # transform into [-6, 6] for plots: v*12.-6.
 
     for c in range(n_cycle):
-
         v, i = start, 0
         while v <= stop:
             L[int(i + c * period)] = 1.0 / (1.0 + np.exp(-(v * 12.0 - 6.0)))
