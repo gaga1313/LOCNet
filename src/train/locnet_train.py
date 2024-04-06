@@ -75,10 +75,12 @@ def train_one_epoch(
 
         loss1 = loss_cls(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
-        loss = (
-            loss_alpha * loss_annealing[anneal_step + i] * loss1
-            + args.loss_beta * loss2
-        )
+
+        # loss = (
+        #     loss_alpha * loss_annealing[anneal_step + i] * loss1
+        #     + args.loss_beta * loss2
+        # )
+        loss = loss_alpha * loss1 + args.loss_beta * loss2
         loss.backward()
 
         acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
@@ -102,7 +104,7 @@ def train_one_epoch(
         metric_logger.update(mse=loss2.item())
         metric_logger.update(cce=loss1.item())
         metric_logger.update(
-            scale_cce=loss_alpha * loss_annealing[anneal_step + i] * loss1.item()
+            scaled_cce=loss_alpha * loss_annealing[anneal_step + i] * loss1.item()
         )
         metric_logger.update(scaled_mse=args.loss_beta * loss2.item())
         metric_logger.update(loss=loss.item())
@@ -364,7 +366,6 @@ def main():
         )
 
     num_training_steps_per_epoch = len(loader_train)
-    updates_per_epoch = len(loader_train)
 
     annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
     annealing_values = sl_utils.frange_cycle_sigmoid(

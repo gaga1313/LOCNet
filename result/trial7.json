@@ -1,0 +1,70 @@
+{
+    "cue-conflict": {
+        "train_acc": 0.18593749403953552,
+        "val_acc": 0.53515625
+    },
+    "edge": {
+        "train_acc": 0.2874999940395355,
+        "val_acc": 0.6187499761581421
+    },
+    "silhouette": {
+        "train_acc": 0.14374999701976776,
+        "val_acc": 0.5562499761581421
+    },
+    "sketch": {
+        "train_acc": 0.3100000023841858,
+        "val_acc": 0.6775000095367432
+    },
+    "stylized": {
+        "train_acc": 0.17249999940395355,
+        "val_acc": 0.4987500011920929
+    },
+    "colour": {
+        "train_acc": 0.555468738079071,
+        "val_acc": 0.848437488079071
+    },
+    "contrast": {
+        "train_acc": 0.23593750596046448,
+        "val_acc": 0.53125
+    },
+    "eidolonI": {
+        "train_acc": 0.26171875,
+        "val_acc": 0.6109374761581421
+    },
+    "eidolonII": {
+        "train_acc": 0.21171875298023224,
+        "val_acc": 0.539843738079071
+    },
+    "eidolonIII": {
+        "train_acc": 0.18203124403953552,
+        "val_acc": 0.514843761920929
+    },
+    "false-colour": {
+        "train_acc": 0.5071428418159485,
+        "val_acc": 0.8098214268684387
+    },
+    "high-pass": {
+        "train_acc": 0.25078123807907104,
+        "val_acc": 0.5625
+    },
+    "low-pass": {
+        "train_acc": 0.1953125,
+        "val_acc": 0.5171874761581421
+    },
+    "phase-scrambling": {
+        "train_acc": 0.2455357164144516,
+        "val_acc": 0.5758928656578064
+    },
+    "power-equalisation": {
+        "train_acc": 0.32678571343421936,
+        "val_acc": 0.7026785612106323
+    },
+    "rotation": {
+        "train_acc": 0.2953124940395355,
+        "val_acc": 0.6421874761581421
+    },
+    "uniform-noise": {
+        "train_acc": 0.16093750298023224,
+        "val_acc": 0.4921875
+    }
+}
