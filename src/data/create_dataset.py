@@ -58,7 +58,7 @@ class LOCDataset(Dataset):
     """Face Landmarks dataset."""
 
     def __init__(
-        self, root_dir, depth_path, image_transform=None, depth_transform=None
+        self, root_dir, depth_path, transforms=None
     ):
         """
         Arguments:
@@ -69,7 +69,7 @@ class LOCDataset(Dataset):
         """
         self.root_dir = root_dir
         self.depth_path = depth_path
-        self.transform = get_transform()
+        self.transform = transforms
         self.class_to_num = get_num_labels()
         self.class_names = sorted(get_classes())
 
