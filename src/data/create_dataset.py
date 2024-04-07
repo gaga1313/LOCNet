@@ -198,11 +198,12 @@ class AlbumentationsRandAugment(ImageOnlyTransform):
             ("Rotate", A.Rotate(limit=(-30 * self.magnitude_scale, 30 * self.magnitude_scale), p=1.0)),
         ]
 
-    def apply(self, img, **params):
+    def apply(self, img, depth, **params):
         ops = np.random.choice(self.operations, size=self.num_ops, replace=False)
         for op_name, op in ops:
             img = op.apply(img, **params)
-        return img
+            depth = op.apply(depth, **params)
+        return img, depth
 
     def get_transform_init_args_names(self):
         return ("num_ops", "magnitude", "num_magnitude_bins")
