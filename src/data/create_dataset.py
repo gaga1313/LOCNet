@@ -105,7 +105,9 @@ class LOCDataset(Dataset):
         depth /= 255.0
 
         if self.transform:
-            image, depth = self.transform(image, depth)
+            transformed = self.transform(image=image, depth=depth)
+            image = transformed["image"]
+            depth = transformed["depth"]
             image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
 
         return image, depth, label
@@ -198,12 +200,11 @@ class AlbumentationsRandAugment(ImageOnlyTransform):
             ("Rotate", A.Rotate(limit=(-30 * self.magnitude_scale, 30 * self.magnitude_scale), p=1.0)),
         ]
 
-    def apply(self, img, depth, **params):
+    def apply(self, img, **params):
         ops = np.random.choice(self.operations, size=self.num_ops, replace=False)
         for op_name, op in ops:
             img = op.apply(img, **params)
-            depth = op.apply(depth, **params)
-        return img, depth
+        return img
 
     def get_transform_init_args_names(self):
         return ("num_ops", "magnitude", "num_magnitude_bins")
