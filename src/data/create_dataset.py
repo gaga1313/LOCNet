@@ -190,25 +190,31 @@ class AlbumentationsRandAugment(ImageOnlyTransform):
 
         # Define operations with their magnitudes scaled appropriately
         self.operations = [
-            ("Identity", A.NoOp()),
-            ("ShearX", A.Affine(shear={'x': (-30 * self.magnitude_scale, 30 * self.magnitude_scale)}, p=1.0)),
-            ("ShearY", A.Affine(shear={'y': (-30 * self.magnitude_scale, 30 * self.magnitude_scale)}, p=1.0)),
-            ("TranslateX",
-             A.Affine(translate_percent={"x": (-0.1 * self.magnitude_scale, 0.1 * self.magnitude_scale)}, p=1.0)),
-            ("TranslateY",
-             A.Affine(translate_percent={"y": (-0.1 * self.magnitude_scale, 0.1 * self.magnitude_scale)}, p=1.0)),
-            ("Rotate", A.Rotate(limit=(-30 * self.magnitude_scale, 30 * self.magnitude_scale), p=1.0)),
+            A.NoOp(),
+            A.Affine(shear={'x': (-30 * self.magnitude_scale, 30 * self.magnitude_scale)}, always_apply=True),
+            A.Affine(shear={'y': (-30 * self.magnitude_scale, 30 * self.magnitude_scale)}, always_apply=True),
+            A.Affine(translate_percent={"x": (-0.1 * self.magnitude_scale, 0.1 * self.magnitude_scale)},
+                     always_apply=True),
+            A.Affine(translate_percent={"y": (-0.1 * self.magnitude_scale, 0.1 * self.magnitude_scale)},
+                     always_apply=True),
+            A.Rotate(limit=(-30 * self.magnitude_scale, 30 * self.magnitude_scale), always_apply=True),
         ]
 
     def apply(self, img, **params):
-        ops = np.random.choice(self.operations, size=self.num_ops, replace=False)
-        for op_name, op in ops:
+        # Select operations to apply
+        selected_ops_indices = np.random.choice(len(self.operations), self.num_ops, replace=False)
+        for idx in selected_ops_indices:
+            op = self.operations[idx]
             img = op.apply(img, **params)
         return img
 
     def apply_to_mask(self, mask, **params):
         # Apply the same operations to the mask/depth map
-        return self.apply(mask, **params)
+        selected_ops_indices = np.random.choice(len(self.operations), self.num_ops, replace=False)
+        for idx in selected_ops_indices:
+            op = self.operations[idx]
+            mask = op.apply_to_mask(mask, **params)
+        return mask
 
     def get_transform_init_args_names(self):
         return ("num_ops", "magnitude", "num_magnitude_bins")
