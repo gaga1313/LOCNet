@@ -105,7 +105,7 @@ class LOCDataset(Dataset):
         depth /= 255.0
 
         if self.transform:
-            transformed = self.transform(image=image, depth=depth)
+            transformed = self.transform(image=np.array(image), depth=depth)
             image = transformed["image"]
             depth = transformed["depth"]
             image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
