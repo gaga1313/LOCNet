@@ -7,9 +7,14 @@ import numpy as np
 # import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
+from torchvision.transforms import RandAugment
+from torchvision.transforms import InterpolationMode
 from PIL import Image, ImageOps
+from typing import Tuple, Dict, List, Optional
 
-# import albumentations as A
+import albumentations as A
+from albumentations.core.transforms_interface import ImageOnlyTransform
+from albumentations.pytorch import ToTensorV2
 import json
 
 
@@ -40,23 +45,13 @@ def get_num_labels():
     return data
 
 
-def get_image_transform():
-    return transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.CenterCrop(224),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-
-
-def get_depth_transform():
-    return transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.CenterCrop(224),
-        ]
-    )
+def get_transform():
+    return A.Compose([
+        A.Resize(256, 256),
+        A.CenterCrop(224, 224),
+        AlbumentationsRandAugment(num_ops=2, magnitude=9),
+        ToTensorV2(),
+    ])
 
 
 class LOCDataset(Dataset):
@@ -74,8 +69,7 @@ class LOCDataset(Dataset):
         """
         self.root_dir = root_dir
         self.depth_path = depth_path
-        self.image_transform = image_transform
-        self.depth_transform = depth_transform
+        self.transform = get_transform()
         self.class_to_num = get_num_labels()
         self.class_names = sorted(get_classes())
 
@@ -110,9 +104,9 @@ class LOCDataset(Dataset):
         depth = np.array(depth).astype(np.float32)
         depth /= 255.0
 
-        if self.image_transform:
-            image = self.image_transform(image)
-            depth = self.depth_transform(depth)
+        if self.transform:
+            image, depth = self.transform(image, depth)
+            image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
 
         return image, depth, label
 
@@ -182,3 +176,33 @@ class GeiDataset(Dataset):
             image = self.image_transform(image)
 
         return image, label
+
+
+class AlbumentationsRandAugment(ImageOnlyTransform):
+    def __init__(self, num_ops=2, magnitude=9, num_magnitude_bins=31, p=1.0):
+        super().__init__(always_apply=False, p=p)
+        self.num_ops = num_ops
+        self.magnitude = magnitude
+        self.num_magnitude_bins = num_magnitude_bins
+        self.magnitude_scale = self.magnitude / self.num_magnitude_bins
+
+        # Define operations with their magnitudes scaled appropriately
+        self.operations = [
+            ("Identity", A.NoOp()),
+            ("ShearX", A.Affine(shear={'x': (-30 * self.magnitude_scale, 30 * self.magnitude_scale)}, p=1.0)),
+            ("ShearY", A.Affine(shear={'y': (-30 * self.magnitude_scale, 30 * self.magnitude_scale)}, p=1.0)),
+            ("TranslateX",
+             A.Affine(translate_percent={"x": (-0.1 * self.magnitude_scale, 0.1 * self.magnitude_scale)}, p=1.0)),
+            ("TranslateY",
+             A.Affine(translate_percent={"y": (-0.1 * self.magnitude_scale, 0.1 * self.magnitude_scale)}, p=1.0)),
+            ("Rotate", A.Rotate(limit=(-30 * self.magnitude_scale, 30 * self.magnitude_scale), p=1.0)),
+        ]
+
+    def apply(self, img, **params):
+        ops = np.random.choice(self.operations, size=self.num_ops, replace=False)
+        for op_name, op in ops:
+            img = op.apply(img, **params)
+        return img
+
+    def get_transform_init_args_names(self):
+        return ("num_ops", "magnitude", "num_magnitude_bins")
