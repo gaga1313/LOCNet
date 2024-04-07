@@ -51,7 +51,7 @@ def get_transform():
         A.CenterCrop(224, 224),
         AlbumentationsRandAugment(num_ops=2, magnitude=9),
         ToTensorV2(),
-    ])
+    ], additional_targets={'image': 'image', 'depth': 'mask'})
 
 
 class LOCDataset(Dataset):
@@ -205,6 +205,10 @@ class AlbumentationsRandAugment(ImageOnlyTransform):
         for op_name, op in ops:
             img = op.apply(img, **params)
         return img
+
+    def apply_to_mask(self, mask, **params):
+        # Apply the same operations to the mask/depth map
+        return self.apply(mask, **params)
 
     def get_transform_init_args_names(self):
         return ("num_ops", "magnitude", "num_magnitude_bins")
