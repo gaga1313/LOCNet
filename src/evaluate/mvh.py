@@ -48,7 +48,7 @@ def load_results(file_path):
 
 
 def main():
-    model_path = "/cifs/data/tserre_lrs/projects/prj_model_vs_human/LOCNet/checkpoints/trial7/model_best.pth.tar"
+    model_path = "/cifs/data/tserre_lrs/projects/prj_model_vs_human/LOCNet/checkpoints/trial10/model_best.pth.tar"
     data_dir = "/cifs/data/tserre_lrs/projects/prj_model_vs_human/model-vs-human/model-vs-human/datasets"
 
     trial = model_path.split("/")[-2]
