@@ -26,9 +26,21 @@ class AutoEncoder(nn.Module):
         self.dropout = nn.Dropout(0.2)
         self.classifier = nn.Linear(2048, 16)
         self.bridge = Bridge(2048, 2048)
-        up_blocks.append(UpBlockForUNetWithResNet50(2048, 1024))
-        up_blocks.append(UpBlockForUNetWithResNet50(1024, 512))
-        up_blocks.append(UpBlockForUNetWithResNet50(512, 256))
+        up_blocks.append(
+            UpBlockForUNetWithResNet50(in_channels=1024,
+                                       out_channels=1024,
+                                       up_conv_in_channels=2048,
+                                       up_conv_out_channels=1024))
+        up_blocks.append(
+            UpBlockForUNetWithResNet50(in_channels=512,
+                                       out_channels=512,
+                                       up_conv_in_channels=1024,
+                                       up_conv_out_channels=512))
+        up_blocks.append(
+            UpBlockForUNetWithResNet50(in_channels=256,
+                                       out_channels=256,
+                                       up_conv_in_channels=512,
+                                       up_conv_out_channels=256))
         up_blocks.append(
             UpBlockForUNetWithResNet50(
                 in_channels=128,
@@ -55,7 +67,7 @@ class AutoEncoder(nn.Module):
         x = self.input_pool(x)
         for i, block in enumerate(self.down_blocks, 2):
             x = block(x)
-            if i == (UNetWithResnet50Encoder.DEPTH - 1):
+            if i == (AutoEncoder.DEPTH - 1):
                 continue
 
         cls_pred = self.avg_pool(x)
