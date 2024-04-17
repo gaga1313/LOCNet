@@ -142,6 +142,7 @@ class UNetWithResnet50Encoder(nn.Module):
         self.up_blocks = nn.ModuleList(up_blocks)
 
         self.out = nn.Conv2d(64, n_classes, kernel_size=1, stride=1)
+        self.activation = nn.Sigmoid()
 
     def forward(self, x, with_output_feature_map=False):
         pre_pools = dict()
@@ -179,6 +180,7 @@ class UNetWithResnet50Encoder(nn.Module):
         output_feature_map = x
         # print(f'output featuremap shape {x.shape}')
         x = self.out(x)
+        x = self.activation(x)
         del pre_pools
         if with_output_feature_map:
             return x, cls_pred, output_feature_map

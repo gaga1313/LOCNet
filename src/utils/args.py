@@ -27,7 +27,7 @@ parser.add_argument(
 
 ## model parameters
 parser.add_argument("--model", help="name of the model", default="resnet50")
-parser.add_argument("--pretrained", default=True)
+parser.add_argument("--pretrained", default=True) 
 parser.add_argument("--initial_checkpoint", default=None)
 parser.add_argument("--checkpoint-hist", default=10, type=int)
 parser.add_argument("--grad-accum-steps", default=1)
