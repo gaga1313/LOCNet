@@ -165,3 +165,5 @@ akash_before_bridge_checkpoints/
 predicted_depthmaps/
 predicted_depth_maps/
 checkpoints/
+/Image
+/pre_trained
