@@ -20,7 +20,7 @@ from timm.models import (
 )
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 
-from src.data import LOCDataset, get_transform
+from src.data import LOCDataset, get_shared_transform, get_img_transform
 from src.sl_utils import WandBLogger
 from src import sl_utils
 from src.models import *
@@ -261,7 +261,8 @@ def main():
 
     assert args.rank >= 0
 
-    transformations = get_transform()
+    shared_transformations = get_shared_transform()
+    image_transformations = get_img_transform()
 
     train_depth_dir = os.path.join(args.depth_dir, "train")
     train_image_dir = os.path.join(args.image_dir, "train")
@@ -269,7 +270,8 @@ def main():
     dataset_train = LOCDataset(
         train_image_dir,
         train_depth_dir,
-        transforms=transformations,
+        shared_transforms=shared_transformations,
+        img_transform=image_transformations,
     )
     sampler_train = torch.utils.data.DistributedSampler(
         dataset_train, num_replicas=args.world_size, rank=args.rank, shuffle=True

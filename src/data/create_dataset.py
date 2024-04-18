@@ -6,6 +6,8 @@ import numpy as np
 
 # import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
+from torch import Tensor
+from torchvision import transforms as T
 from torchvision import transforms, utils
 from torchvision.transforms import RandAugment
 from torchvision.transforms import InterpolationMode
@@ -45,20 +47,25 @@ def get_num_labels():
     return data
 
 
-def get_transform():
-    return A.Compose([
-        A.Resize(256, 256),
-        A.CenterCrop(224, 224),
-        AlbumentationsRandAugment(num_ops=2, magnitude=9),
-        ToTensorV2(),
-    ], additional_targets={'image': 'image', 'depth': 'mask'})
+def get_shared_transform():
+    transforms = T.Compose([
+        T.Resize((256, 256)),
+        T.CenterCrop((224, 224)),
+        RandAffineAugment(),
+        T.ToTensor(),
+    ])
+    return transforms
+
+
+def get_img_transform():
+    return RandColorAugment()
 
 
 class LOCDataset(Dataset):
     """Face Landmarks dataset."""
 
     def __init__(
-        self, root_dir, depth_path, transforms=None
+        self, root_dir, depth_path, shared_transforms=None, img_transform=None
     ):
         """
         Arguments:
@@ -69,7 +76,8 @@ class LOCDataset(Dataset):
         """
         self.root_dir = root_dir
         self.depth_path = depth_path
-        self.transform = transforms
+        self.shared_transform = DualTransform(shared_transforms) if shared_transforms else None
+        self.img_transform = img_transform if img_transform else None
         self.class_to_num = get_num_labels()
         self.class_names = sorted(get_classes())
 
@@ -104,10 +112,9 @@ class LOCDataset(Dataset):
         depth = np.array(depth).astype(np.float32)
         depth /= 255.0
 
-        if self.transform:
-            transformed = self.transform(image=np.array(image), depth=depth)
-            image = transformed["image"]
-            depth = transformed["depth"]
+        if self.shared_transform:
+            image, depth = self.shared_transform(image, depth)
+            image = self.img_transform(image) if self.img_transform else image
             image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
 
         return image, depth, label
@@ -180,41 +187,44 @@ class GeiDataset(Dataset):
         return image, label
 
 
-class AlbumentationsRandAugment(ImageOnlyTransform):
-    def __init__(self, num_ops=2, magnitude=9, num_magnitude_bins=31, p=1.0):
-        super().__init__(always_apply=False, p=p)
-        self.num_ops = num_ops
-        self.magnitude = magnitude
-        self.num_magnitude_bins = num_magnitude_bins
-        self.magnitude_scale = self.magnitude / self.num_magnitude_bins
+class DualTransform:
+    def __init__(self, transform):
+        self.transform = transform
 
-        # Define operations with their magnitudes scaled appropriately
-        self.operations = [
-            A.NoOp(),
-            A.Affine(shear={'x': (-30 * self.magnitude_scale, 30 * self.magnitude_scale)}, always_apply=True),
-            A.Affine(shear={'y': (-30 * self.magnitude_scale, 30 * self.magnitude_scale)}, always_apply=True),
-            A.Affine(translate_percent={"x": (-0.1 * self.magnitude_scale, 0.1 * self.magnitude_scale)},
-                     always_apply=True),
-            A.Affine(translate_percent={"y": (-0.1 * self.magnitude_scale, 0.1 * self.magnitude_scale)},
-                     always_apply=True),
-            A.Rotate(limit=(-30 * self.magnitude_scale, 30 * self.magnitude_scale), always_apply=True),
-        ]
+    def __call__(self, image, depth):
+        seed = torch.random.initial_seed()
+        torch.manual_seed(seed)
+        if self.transform is not None:
+            image = self.transform(image)
+        torch.manual_seed(seed)
+        if self.transform is not None:
+            depth = self.transform(depth)
+        return image, depth
 
-    def apply(self, img, **params):
-        # Select operations to apply
-        selected_ops_indices = np.random.choice(len(self.operations), self.num_ops, replace=False)
-        for idx in selected_ops_indices:
-            op = self.operations[idx]
-            img = op.apply(img, **params)
-        return img
 
-    def apply_to_mask(self, mask, **params):
-        # Apply the same operations to the mask/depth map
-        selected_ops_indices = np.random.choice(len(self.operations), self.num_ops, replace=False)
-        for idx in selected_ops_indices:
-            op = self.operations[idx]
-            mask = op.apply_to_mask(mask, **params)
-        return mask
+class RandAffineAugment(RandAugment):
+    def _augmentation_space(self, num_bins: int, image_size: Tuple[int, int]) -> Dict[str, Tuple[Tensor, bool]]:
+        return {
+            # op_name: (magnitudes, signed)
+            "Identity": (torch.tensor(0.0), False),
+            "ShearX": (torch.linspace(0.0, 0.3, num_bins), True),
+            "ShearY": (torch.linspace(0.0, 0.3, num_bins), True),
+            "TranslateX": (torch.linspace(0.0, 150.0 / 331.0 * image_size[1], num_bins), True),
+            "TranslateY": (torch.linspace(0.0, 150.0 / 331.0 * image_size[0], num_bins), True),
+            "Rotate": (torch.linspace(0.0, 30.0, num_bins), True),
+        }
 
-    def get_transform_init_args_names(self):
-        return ("num_ops", "magnitude", "num_magnitude_bins")
+
+class RandColorAugment(RandAugment):
+    def _augmentation_space(self, num_bins: int, image_size: Tuple[int, int]) -> Dict[str, Tuple[Tensor, bool]]:
+        return {
+            # op_name: (magnitudes, signed)
+            "Brightness": (torch.linspace(0.0, 0.9, num_bins), True),
+            "Color": (torch.linspace(0.0, 0.9, num_bins), True),
+            "Contrast": (torch.linspace(0.0, 0.9, num_bins), True),
+            "Sharpness": (torch.linspace(0.0, 0.9, num_bins), True),
+            "Posterize": (8 - (torch.arange(num_bins) / ((num_bins - 1) / 4)).round().int(), False),
+            "Solarize": (torch.linspace(255.0, 0.0, num_bins), False),
+            "AutoContrast": (torch.tensor(0.0), False),
+            "Equalize": (torch.tensor(0.0), False),
+        }
