@@ -73,11 +73,11 @@ def train_one_epoch(
         loss1 = loss_cls(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
 
-        loss = (
-                args.loss_alpha * loss_annealing[anneal_step + i] * loss1
-                + args.loss_beta * (1 - loss_annealing[anneal_step + i]) * loss2
-        )
-        # loss = loss_alpha * loss1 + args.loss_beta * loss2
+        # loss = (
+        #         args.loss_alpha * loss_annealing[anneal_step + i] * loss1
+        #         + args.loss_beta * (1 - loss_annealing[anneal_step + i]) * loss2
+        # )
+        loss = loss_alpha * loss1 + args.loss_beta * loss2
         loss.backward()
 
         acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
