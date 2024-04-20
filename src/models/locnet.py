@@ -95,7 +95,8 @@ class UpBlockForUNetWithResNet50(nn.Module):
         :return: upsampled feature map
         """
         x = self.upsample(up_x)
-        x = torch.cat([x, down_x], 1)
+        if down_x is not None:
+            x = torch.cat([x, down_x], 1)
         x = self.conv_block_1(x)
         x = self.conv_block_2(x)
         return x
