@@ -368,18 +368,19 @@ def main():
 
     num_training_steps_per_epoch = len(loader_train)
     n_cycle = 4
+    # import ipdb;ipdb.set_trace()
     annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
-    annealing_values = sl_utils.frange_cycle_sigmoid(
-        0.0, 1.0, annealing_steps, n_cycle=n_cycle, ratio=0.25
-    )
-    mask = np.array([0 for i in range(annealing_steps)])
-    steps_per_cycle = annealing_steps//n_cycle
-    for i in range(1,n_cycle,2):
-        mask[i*steps_per_cycle : (i+1)*steps_per_cycle] = 1.0
-    annealing_values = annealing_values * mask
+    # annealing_values = sl_utils.frange_cycle_sigmoid(
+    #     1.0, 1.0, annealing_steps, n_cycle=1, ratio=1.0
+    # )
+    mask = np.array([1 for i in range(annealing_steps)]) #changed
+    # steps_per_cycle = annealing_steps//n_cycle
+    # for i in range(1,n_cycle,2):
+    #     mask[i*steps_per_cycle : (i+1)*steps_per_cycle] = 1.0
+    annealing_values =  mask
     
     # args.mse_scale = 
-    args.lr = args.warmup_lr * args.world_size
+    # args.lr = args.warmup_lr * args.world_size
 
     lr_scheduler_values = sl_utils.cosine_scheduler(
         args.lr,
@@ -388,6 +389,8 @@ def main():
         num_training_steps_per_epoch,
         warmup_epochs=args.warmup_epochs,
     )
+    n = len(lr_scheduler_values)
+    lr_scheduler_values = [args.lr for i in range(n)]
 
     start_epoch = 0
     if args.start_epoch is not None:
