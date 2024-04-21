@@ -261,8 +261,8 @@ def main():
 
     assert args.rank >= 0
 
-    shared_transformations = get_shared_transform()
-    image_transformations = get_img_transform()
+    train_shared_transformations = get_shared_transform("train")
+    train_image_transformations = get_img_transform("train")
 
     train_depth_dir = os.path.join(args.depth_dir, "train")
     train_image_dir = os.path.join(args.image_dir, "train")
@@ -270,8 +270,8 @@ def main():
     dataset_train = LOCDataset(
         train_image_dir,
         train_depth_dir,
-        shared_transforms=shared_transformations,
-        img_transform=image_transformations,
+        shared_transforms=train_shared_transformations,
+        img_transform=train_image_transformations,
     )
     sampler_train = torch.utils.data.DistributedSampler(
         dataset_train, num_replicas=args.world_size, rank=args.rank, shuffle=True
@@ -279,10 +279,14 @@ def main():
 
     val_depth_dir = os.path.join(args.depth_dir, "val")
     val_image_dir = os.path.join(args.image_dir, "val")
+    val_shared_transformations = get_shared_transform("val")
+    val_image_transformations = get_img_transform("val")
 
     dataset_eval = LOCDataset(
         val_image_dir,
         val_depth_dir,
+        shared_transforms=val_shared_transformations,
+        img_transform=val_image_transformations,
     )
     sampler_eval = torch.utils.data.DistributedSampler(
         dataset_eval, num_replicas=args.world_size, rank=args.rank, shuffle=False

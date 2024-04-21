@@ -41,17 +41,26 @@ def get_num_labels():
     return data
 
 
-def get_shared_transform():
-    transforms = T.Compose([
-        T.Resize((256, 256)),
-        T.CenterCrop((224, 224)),
-        RandAffineAugment()
-    ])
+def get_shared_transform(split="train"):
+    if split == "train":
+        transforms = T.Compose([
+            T.Resize((256, 256)),
+            T.CenterCrop((224, 224)),
+            RandAffineAugment()
+        ])
+    else:
+        transforms = T.Compose([
+            T.Resize((256, 256)),
+            T.CenterCrop((224, 224))
+        ])
     return transforms
 
 
-def get_img_transform():
-    return RandColorAugment()
+def get_img_transform(split="train"):
+    if split == "train":
+        return RandColorAugment()
+    else:
+        return None
 
 
 class LOCDataset(Dataset):
