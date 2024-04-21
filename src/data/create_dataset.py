@@ -45,8 +45,7 @@ def get_shared_transform():
     transforms = T.Compose([
         T.Resize((256, 256)),
         T.CenterCrop((224, 224)),
-        RandAffineAugment(),
-        T.ToTensor(),
+        RandAffineAugment()
     ])
     return transforms
 
@@ -104,10 +103,13 @@ class LOCDataset(Dataset):
         image = Image.open(img_path).convert("RGB")
         depth = ImageOps.grayscale(Image.open(depth_path))
 
-        if self.shared_transform:
-            image, depth = self.shared_transform(image, depth)
-            image = self.img_transform(image) if self.img_transform else image
-            image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
+        image, depth = self.shared_transform(image, depth) if self.shared_transform else (image, depth)
+
+        image = T.ToTensor()(image)
+        depth = T.ToTensor()(depth)
+
+        image = self.img_transform(image) if self.img_transform else image
+        image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
 
         return image, depth, label
 
