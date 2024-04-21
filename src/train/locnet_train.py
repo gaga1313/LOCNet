@@ -6,7 +6,6 @@ import numpy as np
 import random
 import cv2
 
-
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -21,7 +20,6 @@ from timm.models import (
 )
 from timm.optim import create_optimizer_v2, optimizer_kwargs
 
-
 from src.data import LOCDataset, get_image_transform, get_depth_transform
 from src.sl_utils import WandBLogger
 from src import sl_utils
@@ -29,7 +27,6 @@ from src.models import *
 from src.utils.args import args
 
 _logger = logging.getLogger("train")
-
 
 random.seed(42)
 np.random.seed(42)
@@ -39,17 +36,17 @@ torch.cuda.manual_seed(42)
 
 # train for one epoch
 def train_one_epoch(
-    model,
-    epoch,
-    train_dataloader,
-    loss_cls,
-    loss_recon,
-    optimizer,
-    rest_cce,
-    device,
-    lr_scheduler_values=[],
-    loss_annealing=[],
-    log_writer=None,
+        model,
+        epoch,
+        train_dataloader,
+        loss_cls,
+        loss_recon,
+        optimizer,
+        rest_cce,
+        device,
+        lr_scheduler_values=[],
+        loss_annealing=[],
+        log_writer=None,
 ):
     model.train()
 
@@ -76,11 +73,11 @@ def train_one_epoch(
         loss1 = loss_cls(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
 
-        loss = (
-            loss_alpha * loss_annealing[anneal_step + i] * loss1
-            + args.loss_beta * loss2
-        )
-        # loss = loss_alpha * loss1 + args.loss_beta * loss2
+        # loss = (
+        #         args.loss_alpha * loss_annealing[anneal_step + i] * loss1
+        #         + args.loss_beta * (1 - loss_annealing[anneal_step + i]) * loss2
+        # )
+        loss = loss_alpha * loss1 + args.loss_beta * loss2
         loss.backward()
 
         acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
@@ -119,9 +116,9 @@ def train_one_epoch(
         metric_logger.synchronize_between_processes()
 
         if (
-            utils.is_primary(args)
-            and log_writer != None
-            and ((start_step + i) % args.log_interval == 0)
+                utils.is_primary(args)
+                and log_writer != None
+                and ((start_step + i) % args.log_interval == 0)
         ):
             log_writer.set_step(start_step + i)
             log_writer.update(train_cce=metric_logger.cce.avg, head="train")
@@ -160,14 +157,14 @@ def train_one_epoch(
 
 
 def validate(
-    model,
-    start_epoch,
-    val_dataloader,
-    loss_fn,
-    loss_recon,
-    device,
-    log_writer=None,
-    start_step=0,
+        model,
+        start_epoch,
+        val_dataloader,
+        loss_fn,
+        loss_recon,
+        device,
+        log_writer=None,
+        start_step=0,
 ):
     model.eval()
     metric_logger = sl_utils.MetricLogger(delimiter="  ")
@@ -367,13 +364,21 @@ def main():
         )
 
     num_training_steps_per_epoch = len(loader_train)
+    n_cycle = 4
 
+    # import ipdb;ipdb.set_trace()
     annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
-    annealing_values = sl_utils.frange_cycle_sigmoid(
-        0.0, 1.0, annealing_steps, n_cycle=1, ratio=0.25
-    )
-
-    args.lr = args.warmup_lr * args.world_size
+    # annealing_values = sl_utils.frange_cycle_sigmoid(
+    #     1.0, 1.0, annealing_steps, n_cycle=1, ratio=1.0
+    # )
+    mask = np.array([1 for i in range(annealing_steps)]) #changed
+    # steps_per_cycle = annealing_steps//n_cycle
+    # for i in range(1,n_cycle,2):
+    #     mask[i*steps_per_cycle : (i+1)*steps_per_cycle] = 1.0
+    annealing_values =  mask
+    
+    # args.mse_scale = 
+    # args.lr = args.warmup_lr * args.world_size
 
     lr_scheduler_values = sl_utils.cosine_scheduler(
         args.lr,
@@ -382,6 +387,8 @@ def main():
         num_training_steps_per_epoch,
         warmup_epochs=args.warmup_epochs,
     )
+    n = len(lr_scheduler_values)
+    lr_scheduler_values = [args.lr for i in range(n)]
 
     start_epoch = 0
     if args.start_epoch is not None:
