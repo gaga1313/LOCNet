@@ -15,7 +15,7 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image, preprocess_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 import sys
-import sys
+
 sys.path.insert(0, './src')
 from models.locnet import UNetWithResnet50Encoder
 
@@ -41,9 +41,9 @@ class WrapperModel(torch.nn.Module):
         
     def forward(self, x):
         # In out case conv_block_1 or conv_block_2
-        main_output, cls_pred, output_feature_map = self.model(x)
+        main_output, cls_pred = self.model(x)
 
-        return output_feature_map.up_blocks[-1].conv_block_1
+        return cls_pred
     
 
 # Temp just for loading the dictionary
@@ -55,13 +55,29 @@ class WrapperModel(torch.nn.Module):
 #     image = touchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
 #     image = image.unsqueeze(0)
 #     return image
-
-def TestOnOneImage(image_path):
+def NormalProcess(image_path):
     image = np.array(Image.open(image_path))
-    # plt.imshow(image)
-    # plt.show()
     rgb_img = np.float32(image) / 255
     input_tensor = preprocess_image(rgb_img,
+                                mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
+    return input_tensor
+
+def TestOnOneImage(image_path):
+    #image = np.array(Image.open(image_path))
+    # plt.imshow(image)
+    # plt.show()
+    # rgb_img = np.float32(image) / 255
+    trans = torchvision.transforms.Compose([
+            torchvision.transforms.Resize((256, 256)),
+            torchvision.transforms.CenterCrop((224, 224))
+        ])
+    
+    # img = trans(image)
+    
+    img = Image.open(image_path)
+    img = trans(img)
+    input_tensor = preprocess_image(img,
                                 mean=[0.485, 0.456, 0.406],
                                 std=[0.229, 0.224, 0.225])
     
@@ -105,7 +121,7 @@ def ResNet50Cam():
     model = torchvision.models.resnet50(pretrained= True)  
     target_layer = [model.layer4[-1] ]
     img = TestOnOriginalImage(image_path)
-    input_tensor_temp = TestOnOneImage(image_path)
+    input_tensor_temp = NormalProcess(image_path)
     target = [ClassifierOutputTarget(2)] ## index of the class, seems 2 for the sample
     #target = None
     with GradCAM(model=model, target_layers=target_layer) as cam:
@@ -121,15 +137,20 @@ def ResNet50Cam():
 # check the target layer set to before the bridge of U-Net
 def LocNetCam():
     #model = LoadLocNetModel()
+    # model = WrapperModel(LoadLocNetModel())
+    # target_layer = [model] # alreayd wrapped
     model = WrapperModel(LoadLocNetModel())
-    target_layer = [model] # alreayd wrapped
+    target_layer = [model]
     img = TestOnOriginalImage(image_path)
     input_tensor_temp = TestOnOneImage(image_path)
     target = [ClassifierOutputTarget(2)] 
 
+
     with GradCAM(model=model, target_layers=target_layer) as cam:
-        grayscale_cams = cam(input_tensor=input_tensor_temp, targets=target)
+        grayscale_cams = cam(input_tensor=input_tensor_temp, targets=None)
         cam_image = show_cam_on_image(img, grayscale_cams[0, :], use_rgb=True)
+
+    
     cam = np.uint8(255*grayscale_cams[0, :])
     cam = cv2.merge([cam, cam, cam])
     images = np.hstack((np.uint8(255*img) , cam_image))
@@ -139,7 +160,7 @@ def LocNetCam():
     plt.show()
     
     
-#ResNet50Cam()
-LocNetCam()
+ResNet50Cam()
+#LocNetCam()
 #LoadLocNetModel()
 
