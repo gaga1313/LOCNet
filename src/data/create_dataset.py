@@ -1,9 +1,6 @@
 import os
 import torch
 
-# from skimage import io, transform
-import numpy as np
-
 # import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
 from torch import Tensor
@@ -14,9 +11,6 @@ from torchvision.transforms import InterpolationMode
 from PIL import Image, ImageOps
 from typing import Tuple, Dict, List, Optional
 
-import albumentations as A
-from albumentations.core.transforms_interface import ImageOnlyTransform
-from albumentations.pytorch import ToTensorV2
 import json
 
 
