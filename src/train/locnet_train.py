@@ -378,7 +378,7 @@ def main():
     annealing_values =  mask
     
     # args.mse_scale = 
-    args.lr = args.warmup_lr * args.world_size
+    # args.lr = args.warmup_lr * args.world_size
 
     lr_scheduler_values = sl_utils.cosine_scheduler(
         args.lr,
