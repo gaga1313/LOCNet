@@ -389,8 +389,8 @@ def main():
         num_training_steps_per_epoch,
         warmup_epochs=args.warmup_epochs,
     )
-    n = len(lr_scheduler_values)
-    lr_scheduler_values = [args.lr for i in range(n)]
+    # n = len(lr_scheduler_values)
+    # lr_scheduler_values = [args.lr for i in range(n)]
 
     start_epoch = 0
     if args.start_epoch is not None:
