@@ -1,5 +1,6 @@
 import os
 import torch
+import time
 
 # import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
@@ -197,7 +198,7 @@ class DualTransform:
         self.transform = transform
 
     def __call__(self, image, depth):
-        seed = torch.random.initial_seed()
+        seed = int(time.time())
         torch.manual_seed(seed)
         if self.transform is not None:
             image = self.transform(image)
