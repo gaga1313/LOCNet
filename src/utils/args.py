@@ -153,6 +153,12 @@ parser.add_argument(
 
 # parser.add_argument('Augmentation and regularization parameters')
 parser.add_argument(
+    "--aug",
+    action="store_true",
+    default=False,
+    help="Enable all training augmentations",
+)
+parser.add_argument(
     "--no-aug",
     action="store_true",
     default=False,

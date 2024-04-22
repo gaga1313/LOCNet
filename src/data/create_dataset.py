@@ -42,8 +42,8 @@ def get_num_labels():
     return data
 
 
-def get_shared_transform(split="train"):
-    if split == "train":
+def get_shared_transform(aug):
+    if aug:
         transforms = T.Compose([
             T.Resize((256, 256)),
             T.CenterCrop((224, 224)),
@@ -57,8 +57,8 @@ def get_shared_transform(split="train"):
     return transforms
 
 
-def get_img_transform(split="train"):
-    if split == "train":
+def get_img_transform(aug):
+    if aug:
         return RandColorAugment()
     else:
         return None
@@ -243,8 +243,8 @@ if __name__ == '__main__':
     depth_dir = '../../../data/depth-sub'
     image_dir = '../../../data/imagenet-sub'
 
-    train_shared_transformations = get_shared_transform("train")
-    train_image_transformations = get_img_transform("train")
+    train_shared_transformations = get_shared_transform(True)
+    train_image_transformations = get_img_transform(True)
 
     train_depth_dir = os.path.join(depth_dir, "train")
     train_image_dir = os.path.join(image_dir, "train")
@@ -263,8 +263,8 @@ if __name__ == '__main__':
     plt.imshow(depth.squeeze(), cmap='gray')
     plt.show()
 
-    val_shared_transformations = get_shared_transform("val")
-    val_image_transformations = get_img_transform("val")
+    val_shared_transformations = get_shared_transform(False)
+    val_image_transformations = get_img_transform(False)
 
     val_depth_dir = os.path.join(depth_dir, "val")
     val_image_dir = os.path.join(image_dir, "val")

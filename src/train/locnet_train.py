@@ -261,8 +261,8 @@ def main():
 
     assert args.rank >= 0
 
-    train_shared_transformations = get_shared_transform("train")
-    train_image_transformations = get_img_transform("train")
+    train_shared_transformations = get_shared_transform(aug=args.aug)
+    train_image_transformations = get_img_transform(aug=args.aug)
 
     train_depth_dir = os.path.join(args.depth_dir, "train")
     train_image_dir = os.path.join(args.image_dir, "train")
@@ -279,8 +279,8 @@ def main():
 
     val_depth_dir = os.path.join(args.depth_dir, "val")
     val_image_dir = os.path.join(args.image_dir, "val")
-    val_shared_transformations = get_shared_transform("val")
-    val_image_transformations = get_img_transform("val")
+    val_shared_transformations = get_shared_transform(aug=False)
+    val_image_transformations = get_img_transform(aug=False)
 
     dataset_eval = LOCDataset(
         val_image_dir,
