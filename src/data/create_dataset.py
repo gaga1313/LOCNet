@@ -112,13 +112,12 @@ class LOCDataset(Dataset):
         image = Image.open(img_path).convert("RGB")
         depth = ImageOps.grayscale(Image.open(depth_path))
 
-        image = image / 255.0
-        depth = depth / 255.0
-
         image, depth = self.shared_transform(image, depth) if self.shared_transform else (image, depth)
 
         image = T.ToTensor()(image)
         depth = T.ToTensor()(depth)
+        image /= 255.0
+        depth /= 255.0
 
         image = self.img_transform(image) if self.img_transform else image
         image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
