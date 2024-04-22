@@ -108,6 +108,7 @@ class LOCDataset(Dataset):
         image = Image.open(img_path).convert("RGB")
         depth = ImageOps.grayscale(Image.open(depth_path))
         depth = np.array(depth).astype(np.float32)
+        image = np.array(image).astype(np.float32)
         image = image / 255.0
         depth /= 255.0
 
