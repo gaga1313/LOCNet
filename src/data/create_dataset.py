@@ -116,10 +116,10 @@ class LOCDataset(Dataset):
 
         image = T.ToTensor()(image)
         depth = T.ToTensor()(depth)
-        image /= 255.0
-        depth /= 255.0
 
+        image = (image * 255).byte()
         image = self.img_transform(image) if self.img_transform else image
+        image = image.float() / 255
         image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
 
         return image, depth, label
@@ -224,6 +224,7 @@ class RandColorAugment(RandAugment):
     def _augmentation_space(self, num_bins: int, image_size: Tuple[int, int]) -> Dict[str, Tuple[Tensor, bool]]:
         return {
             # op_name: (magnitudes, signed)
+            "Identity": (torch.tensor(0.0), False),
             "Brightness": (torch.linspace(0.0, 0.9, num_bins), True),
             "Color": (torch.linspace(0.0, 0.9, num_bins), True),
             "Contrast": (torch.linspace(0.0, 0.9, num_bins), True),
@@ -233,3 +234,50 @@ class RandColorAugment(RandAugment):
             "AutoContrast": (torch.tensor(0.0), False),
             "Equalize": (torch.tensor(0.0), False),
         }
+
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+
+    depth_dir = '../../../data/depth-sub'
+    image_dir = '../../../data/imagenet-sub'
+
+    train_shared_transformations = get_shared_transform("train")
+    train_image_transformations = get_img_transform("train")
+
+    train_depth_dir = os.path.join(depth_dir, "train")
+    train_image_dir = os.path.join(image_dir, "train")
+
+    dataset_train = LOCDataset(
+        train_image_dir,
+        train_depth_dir,
+        shared_transforms=train_shared_transformations,
+        img_transform=train_image_transformations,
+    )
+
+    # Get the first image and depth map and visualize both simultaneously
+    image, depth, label = dataset_train[0]
+    plt.imshow(image.permute(1, 2, 0))
+    plt.show()
+    plt.imshow(depth.squeeze(), cmap='gray')
+    plt.show()
+
+    val_shared_transformations = get_shared_transform("val")
+    val_image_transformations = get_img_transform("val")
+
+    val_depth_dir = os.path.join(depth_dir, "val")
+    val_image_dir = os.path.join(image_dir, "val")
+
+    dataset_val = LOCDataset(
+        val_image_dir,
+        val_depth_dir,
+        shared_transforms=val_shared_transformations,
+        img_transform=val_image_transformations,
+    )
+
+    # Get the first image and depth map and visualize both simultaneously
+    image, depth, label = dataset_val[0]
+    plt.imshow(image.permute(1, 2, 0))
+    plt.show()
+    plt.imshow(depth.squeeze(), cmap='gray')
+    plt.show()
