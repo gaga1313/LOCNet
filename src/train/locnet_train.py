@@ -366,12 +366,11 @@ def main():
         )
 
     num_training_steps_per_epoch = len(loader_train)
-    annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
+    annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 2
 
     if args.loss_anneal:
         n_cycle = 5
         # import ipdb;ipdb.set_trace()
-        annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
         annealing_values = sl_utils.frange_cycle_sigmoid(
             0, 1.0, annealing_steps, n_cycle=n_cycle, ratio=1.0
         )
