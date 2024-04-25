@@ -73,11 +73,11 @@ def train_one_epoch(
         loss1 = loss_cls(predicted_class, target)
         loss2 = loss_recon(predicted_depth_map, depth)
 
-        # loss = (
-        #         args.loss_alpha * loss_annealing[anneal_step + i] * loss1
-        #         + args.loss_beta * (1 - loss_annealing[anneal_step + i]) * loss2
-        # )
-        loss = loss_alpha * loss1 + args.loss_beta * loss2
+        loss = (
+                args.loss_alpha * loss_annealing[anneal_step + i] * loss1
+                + args.loss_beta * loss2
+        )
+        # loss = loss_alpha * loss1 + args.loss_beta * loss2
         loss.backward()
 
         acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
@@ -366,18 +366,17 @@ def main():
         )
 
     num_training_steps_per_epoch = len(loader_train)
-    n_cycle = 4
-
-    # import ipdb;ipdb.set_trace()
     annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
-    # annealing_values = sl_utils.frange_cycle_sigmoid(
-    #     1.0, 1.0, annealing_steps, n_cycle=1, ratio=1.0
-    # )
-    mask = np.array([1 for i in range(annealing_steps)]) #changed
-    # steps_per_cycle = annealing_steps//n_cycle
-    # for i in range(1,n_cycle,2):
-    #     mask[i*steps_per_cycle : (i+1)*steps_per_cycle] = 1.0
-    annealing_values =  mask
+
+    if args.loss_anneal:
+        n_cycle = 5
+        # import ipdb;ipdb.set_trace()
+        annealing_steps = num_training_steps_per_epoch * (args.epochs - args.rest_cce) + 1
+        annealing_values = sl_utils.frange_cycle_sigmoid(
+            0, 1.0, annealing_steps, n_cycle=n_cycle, ratio=1.0
+        )
+    else:
+        annealing_values = np.array([1 for i in range(annealing_steps)])
     
     # args.mse_scale = 
     # args.lr = args.warmup_lr * args.world_size
@@ -404,10 +403,14 @@ def main():
         print(f"Warmup Lr - {args.warmup_lr}")
         print(f"Base LR - {args.lr}")
         print(f"weight decay - {args.weight_decay}")
+        print(f'Optimizer - {args.opt}')
         print(f"Batch Size - {args.batch_size}")
         print(f"Epochs - {args.epochs}")
         print(f"Warmup epochs - {args.warmup_epochs}")
-        print(f"Loss alphs - {args.loss_alpha}")
+        print(f"Loss alpha - {args.loss_alpha}")
+        print(f'Loss beta - {args.loss_beta}')
+        print(f'Is CCe anneal? -{args.loss_anneal}')
+        print(f'CCE anneal cycles - {n_cycle}')
         print(f"Label Smoothing - {args.smoothing}")
         print(f"Total Annealing steps - {annealing_steps}")
         print(f"cce rest : {args.rest_cce}")

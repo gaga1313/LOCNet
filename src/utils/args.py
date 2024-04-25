@@ -24,6 +24,10 @@ parser.add_argument(
 parser.add_argument(
     "--rest-cce", default=1.0, type=int, help="freeze cce loss for initial rest epochs"
 )
+parser.add_argument(
+    "--loss-anneal", default=0, type=int, help="if cce loss annealing"
+)
+
 
 ## model parameters
 parser.add_argument("--model", help="name of the model", default="resnet50")
