@@ -17,7 +17,7 @@ import json
 
 def get_classes():
     with open(
-        "../../data/imagenet_sub_category.json",
+        "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/imagenet_sub_category.json",
         "r",
     ) as file:
         data = json.load(file)
@@ -26,7 +26,7 @@ def get_classes():
 
 def get_human_categories():
     with open(
-        "../../data/imagenet_sub_category.json",
+        "/cifs/data/tserre_lrs/projects/prj_model_vs_human/LOCNet/data/imagenet_sub_category.json",
         "r",
     ) as file:
         data = json.load(file)
@@ -35,7 +35,7 @@ def get_human_categories():
 
 def get_num_labels():
     with open(
-        "../../data/IN_category_to_Human_category_idx.json",
+        "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/IN_category_to_Human_category_idx.json",
         "r",
     ) as file:
         data = json.load(file)
