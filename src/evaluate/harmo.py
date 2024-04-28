@@ -65,7 +65,7 @@ def torch_explainer(xbatch, ybatch):
     saliency = np.array(saliency)
 
     # for debugging
-    visualize_saliency(xbatch, saliency)
+    # visualize_saliency(xbatch, saliency)
     # visualize_saliency(xbatch[:1], saliency[:1])
     # print(ybatch[0])
     # print(out[0])
@@ -78,6 +78,9 @@ def visualize_saliency(images, saliency_maps):
     import matplotlib.pyplot as plt
     # Convert images from PyTorch's NCHW format to NumPy's NHWC format for visualization
     images = images.detach().permute(0, 2, 3, 1).cpu().numpy()  # Assuming images tensor is already on the appropriate device
+
+    # unnormalize the images
+    images = images * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])
 
     num_images = len(images)
     fig, axes = plt.subplots(nrows=num_images, ncols=2, figsize=(10, 5 * num_images))
@@ -103,7 +106,7 @@ def visualize_saliency(images, saliency_maps):
 
 
 # now let's load the dataset
-clickme_dataset = custom_load_clickme_val(batch_size=16)
+clickme_dataset = custom_load_clickme_val(batch_size=128)
 
 # we're ready to get our score, here we test only on the first 5 batches
 scores = evaluate_clickme(model,
