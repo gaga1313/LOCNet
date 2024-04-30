@@ -15,13 +15,25 @@ from typing import Tuple, Dict, List, Optional
 import json
 
 
+# def get_classes():
+#     with open(
+#         "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/imagenet_sub_category.json",
+#         "r",
+#     ) as file:
+#         data = json.load(file)
+#     return list(data.values())
+
 def get_classes():
+    classes = []
     with open(
-        "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/imagenet_sub_category.json",
+        "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/human_identifiable_category_info.json",
         "r",
     ) as file:
         data = json.load(file)
-    return list(data.values())
+        for agg_class in data.keys():
+            sub_classes = data[agg_class]["In_category"]
+            classes.append(sub_classes)
+    return classes
 
 
 def get_human_categories():
@@ -82,22 +94,35 @@ class LOCDataset(Dataset):
         self.shared_transform = DualTransform(shared_transforms) if shared_transforms else None
         self.img_transform = img_transform if img_transform else None
         self.class_to_num = get_num_labels()
-        self.class_names = sorted(get_classes())
+        # self.class_names = sorted(get_classes())
+        self.class_names = get_classes()
 
         self.images = []
         self.depth_maps = []
         self.labels = []
 
-        for cls_name in self.class_names:
-            class_dir = os.path.join(root_dir, cls_name)
-            depth_map_dir = os.path.join(depth_path, cls_name)
-            image_files = os.listdir(class_dir)
+        # for cls_name in self.class_names:
+        #     class_dir = os.path.join(root_dir, cls_name)
+        #     depth_map_dir = os.path.join(depth_path, cls_name)
+        #     image_files = os.listdir(class_dir)
+        #
+        #     for img_file in image_files:
+        #         self.images.append(os.path.join(class_dir, img_file))
+        #         depth_file = img_file.split(".")[0] + "_depth.JPEG"
+        #         self.depth_maps.append(os.path.join(depth_map_dir, depth_file))
+        #         self.labels.append(self.class_to_num[cls_name])
 
-            for img_file in image_files:
-                self.images.append(os.path.join(class_dir, img_file))
-                depth_file = img_file.split(".")[0] + "_depth.JPEG"
-                self.depth_maps.append(os.path.join(depth_map_dir, depth_file))
-                self.labels.append(self.class_to_num[cls_name])
+        for sub_classes in self.class_names:
+            for sub_class in sub_classes:
+                class_dir = os.path.join(root_dir, sub_class)
+                depth_map_dir = os.path.join(depth_path, sub_class)
+                image_files = os.listdir(class_dir)
+
+                for img_file in image_files:
+                    self.images.append(os.path.join(class_dir, img_file))
+                    depth_file = img_file.split(".")[0] + "_depth.JPEG"
+                    self.depth_maps.append(os.path.join(depth_map_dir, depth_file))
+                    self.labels.append(self.class_to_num[sub_class])
 
     def __len__(self):
         return len(self.labels)
