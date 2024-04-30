@@ -31,7 +31,7 @@ def get_classes():
     ) as file:
         data = json.load(file)
         for agg_class in data.keys():
-            sub_classes = data[agg_class]["In_category"]
+            sub_classes = data[agg_class]["IN_category"]
             classes.append(sub_classes)
     return classes
 
