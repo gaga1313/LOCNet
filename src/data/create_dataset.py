@@ -26,7 +26,7 @@ import json
 def get_classes():
     classes = []
     with open(
-        "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/human_identifiable_category_info.json",
+        "/cifs/data/tserre_lrs/projects/prj_tpu_timm/timm_tpu/locnet/human_identifable_category_info.json",
         "r",
     ) as file:
         data = json.load(file)
