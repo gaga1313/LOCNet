@@ -139,7 +139,7 @@ class LOCDataset(Dataset):
         image = Image.open(img_path).convert("RGB")
         # depth = ImageOps.grayscale(Image.open(depth_path))
 
-        image, _ = self.shared_transform(image, image) if self.shared_transform else (image, image)
+        image, _ = self.shared_transform(image, None) if self.shared_transform else (image, None)
 
         image = T.ToTensor()(image)
 
@@ -228,8 +228,8 @@ class DualTransform:
         if self.transform is not None:
             image = self.transform(image)
         torch.manual_seed(seed)
-        if self.transform is not None:
-            depth = self.transform(depth)
+        # if self.transform is not None:
+        #     depth = self.transform(depth)
         return image, depth
 
 
