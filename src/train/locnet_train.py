@@ -174,7 +174,7 @@ def validate(
         os.makedirs(args.save_ddir, exist_ok=True)
 
     with torch.no_grad():
-        for i, (input, target) in enumerate(tqdm(val_dataloader)):
+        for i, (input, _, target) in enumerate(tqdm(val_dataloader)):
             input, target = input.to(device), target.to(device)
 
             output = model(input)
