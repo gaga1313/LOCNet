@@ -143,9 +143,9 @@ class LOCDataset(Dataset):
 
         image = T.ToTensor()(image)
 
-        image = (image * 255).byte()
-        image = self.img_transform(image) if self.img_transform else image
-        image = image.float() / 255
+        # image = (image * 255).byte()
+        # image = self.img_transform(image) if self.img_transform else image
+        # image = image.float() / 255
         image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
 
         return image, image, label
