@@ -91,6 +91,6 @@ __all__ = []
 
 
 @register_model
-def autoencoder(pretrained=False, **kwargs):
-    model = AutoEncoder(n_classes=1)
+def autoencoder(pretrained=False, n_classes=1, **kwargs):
+    model = AutoEncoder(n_classes=n_classes)
     return model
