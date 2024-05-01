@@ -94,9 +94,7 @@ def train_one_epoch(
             input *= 255
             input = input.numpy().astype(np.uint8)
             predicted_image *= 255
-            predicted_image = (
-                predicted_image.numpy().astype(np.uint8)
-            )
+            predicted_image = predicted_image.numpy().astype(np.uint8)
 
             input_img = np.transpose(input[0], (1, 2, 0))
             predicted_img = np.transpose(predicted_image[0], (1, 2, 0))
@@ -211,10 +209,10 @@ def validate(
                 input = input * std + mean
                 predicted_image = predicted_image * std + mean
 
+                input *= 255
+                input = input.numpy().astype(np.uint8)
                 predicted_image *= 255
-                predicted_image = (
-                    predicted_image.numpy().astype(np.uint8)
-                )
+                predicted_image = predicted_image.numpy().astype(np.uint8)
 
                 input_img = np.transpose(input[0], (1, 2, 0))
                 predicted_img = np.transpose(predicted_image[0], (1, 2, 0))
