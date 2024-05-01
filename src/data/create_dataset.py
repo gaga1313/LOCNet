@@ -134,22 +134,21 @@ class LOCDataset(Dataset):
 
         img_path = self.images[idx]
         label = self.labels[idx]
-        depth_path = self.depth_maps[idx]
+        # depth_path = self.depth_maps[idx]
 
         image = Image.open(img_path).convert("RGB")
-        depth = ImageOps.grayscale(Image.open(depth_path))
+        # depth = ImageOps.grayscale(Image.open(depth_path))
 
-        image, depth = self.shared_transform(image, depth) if self.shared_transform else (image, depth)
+        image, _ = self.shared_transform(image, image) if self.shared_transform else (image, image)
 
         image = T.ToTensor()(image)
-        depth = T.ToTensor()(depth)
 
         image = (image * 255).byte()
         image = self.img_transform(image) if self.img_transform else image
         image = image.float() / 255
         image = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(image)
 
-        return image, depth, label
+        return image, image, label
 
 
 class GeiDataset(Dataset):

@@ -62,16 +62,16 @@ def train_one_epoch(
     else:
         loss_alpha = 0.0
 
-    for i, (input, depth, target) in enumerate(tqdm(train_dataloader)):
-        input, depth, target = input.to(device), depth.to(device), target.to(device)
+    for i, (input, _, target) in enumerate(tqdm(train_dataloader)):
+        input, target = input.to(device), target.to(device)
 
         optimizer.zero_grad()
         output = model(input)
 
-        predicted_depth_map, predicted_class = output
+        predicted_image, predicted_class = output
 
         loss1 = loss_cls(predicted_class, target)
-        loss2 = loss_recon(predicted_depth_map, depth)
+        loss2 = loss_recon(predicted_image, input)
 
         loss = (
                 args.loss_alpha * loss_annealing[anneal_step + i] * loss1
@@ -83,16 +83,17 @@ def train_one_epoch(
         acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
 
         if utils.is_primary(args) and args.save_ddir != None:
-            depth *= 255
-            depth = depth.detach().cpu().numpy().astype(np.uint8)
-            predicted_depth_map *= 255
-            predicted_depth_map = (
-                predicted_depth_map.detach().cpu().numpy().astype(np.uint8)
+            input *= 255
+            input = input.detach().cpu().numpy().astype(np.uint8)
+            predicted_image *= 255
+            predicted_image = (
+                predicted_image.detach().cpu().numpy().astype(np.uint8)
             )
 
-            depth_target_pred_image = cv2.hconcat(
-                [depth[0][0], predicted_depth_map[0][0]]
-            )
+            input_img = np.transpose(input[0], (1, 2, 0))
+            predicted_img = np.transpose(predicted_image[0], (1, 2, 0))
+            depth_target_pred_image = cv2.hconcat([input_img, predicted_img])
+
             cv2.imwrite(
                 os.path.join(args.train_depth_dir, str(i) + ".png"),
                 depth_target_pred_image,
@@ -173,14 +174,14 @@ def validate(
         os.makedirs(args.save_ddir, exist_ok=True)
 
     with torch.no_grad():
-        for i, (input, depth, target) in enumerate(tqdm(val_dataloader)):
-            input, depth, target = input.to(device), depth.to(device), target.to(device)
+        for i, (input, target) in enumerate(tqdm(val_dataloader)):
+            input, target = input.to(device), target.to(device)
 
             output = model(input)
-            predicted_depth_map, predicted_class = output
+            predicted_image, predicted_class = output
 
             loss1 = loss_fn(predicted_class, target)
-            loss2 = loss_recon(predicted_depth_map, depth)
+            loss2 = loss_recon(predicted_image, input)
             loss = args.loss_alpha * loss1 + (args.loss_beta * loss2)
 
             acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
@@ -196,14 +197,15 @@ def validate(
             if utils.is_primary(args) and args.save_ddir != None:
                 depth *= 255
                 depth = depth.detach().cpu().numpy().astype(np.uint8)
-                predicted_depth_map *= 255
-                predicted_depth_map = (
-                    predicted_depth_map.detach().cpu().numpy().astype(np.uint8)
+                predicted_image *= 255
+                predicted_image = (
+                    predicted_image.detach().cpu().numpy().astype(np.uint8)
                 )
 
-                depth_target_pred_image = cv2.hconcat(
-                    [depth[0][0], predicted_depth_map[0][0]]
-                )
+                input_img = np.transpose(input[0], (1, 2, 0))
+                predicted_img = np.transpose(predicted_image[0], (1, 2, 0))
+                depth_target_pred_image = cv2.hconcat([input_img, predicted_img])
+
                 cv2.imwrite(
                     os.path.join(args.save_depth_dir, str(i) + ".png"),
                     depth_target_pred_image,
@@ -297,6 +299,7 @@ def main():
         args.model,
         pretrained=args.pretrained,
         checkpoint_path=args.initial_checkpoint,
+        n_classes=3,
     )
     model = model.to(device)
 
