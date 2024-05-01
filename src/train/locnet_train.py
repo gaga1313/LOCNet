@@ -85,16 +85,17 @@ def train_one_epoch(
         if utils.is_primary(args) and args.save_ddir != None:
             # Unnormalize the image
             input = input.detach().cpu()
+            predicted_image.detach().cpu()
             mean = torch.tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1)
             std = torch.tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1)
             input = input * std + mean
             predicted_image = predicted_image * std + mean
 
             input *= 255
-            input = input.detach().cpu().numpy().astype(np.uint8)
+            input = input.numpy().astype(np.uint8)
             predicted_image *= 255
             predicted_image = (
-                predicted_image.detach().cpu().numpy().astype(np.uint8)
+                predicted_image.numpy().astype(np.uint8)
             )
 
             input_img = np.transpose(input[0], (1, 2, 0))
@@ -204,16 +205,15 @@ def validate(
             if utils.is_primary(args) and args.save_ddir != None:
                 # Unnormalize the image
                 input = input.detach().cpu()
+                predicted_image.detach().cpu()
                 mean = torch.tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1)
                 std = torch.tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1)
                 input = input * std + mean
                 predicted_image = predicted_image * std + mean
 
-                depth *= 255
-                depth = depth.detach().cpu().numpy().astype(np.uint8)
                 predicted_image *= 255
                 predicted_image = (
-                    predicted_image.detach().cpu().numpy().astype(np.uint8)
+                    predicted_image.numpy().astype(np.uint8)
                 )
 
                 input_img = np.transpose(input[0], (1, 2, 0))
