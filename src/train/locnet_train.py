@@ -85,7 +85,7 @@ def train_one_epoch(
         if utils.is_primary(args) and args.save_ddir != None:
             # Unnormalize the image
             input = input.detach().cpu()
-            predicted_image.detach().cpu()
+            predicted_image = predicted_image.detach().cpu()
             mean = torch.tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1)
             std = torch.tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1)
             input = input * std + mean
@@ -205,7 +205,7 @@ def validate(
             if utils.is_primary(args) and args.save_ddir != None:
                 # Unnormalize the image
                 input = input.detach().cpu()
-                predicted_image.detach().cpu()
+                predicted_image = predicted_image.detach().cpu()
                 mean = torch.tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1)
                 std = torch.tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1)
                 input = input * std + mean
