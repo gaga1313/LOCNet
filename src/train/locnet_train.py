@@ -83,6 +83,12 @@ def train_one_epoch(
         acc1, acc5 = sl_utils.accuracy(predicted_class, target, topk=(1, 5))
 
         if utils.is_primary(args) and args.save_ddir != None:
+            # Unnormalize the image
+            mean = torch.tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1)
+            std = torch.tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1)
+            input = input * std + mean
+            predicted_image = predicted_image * std + mean
+
             input *= 255
             input = input.detach().cpu().numpy().astype(np.uint8)
             predicted_image *= 255
@@ -195,6 +201,12 @@ def validate(
             metric_logger.synchronize_between_processes()
 
             if utils.is_primary(args) and args.save_ddir != None:
+                # Unnormalize the image
+                mean = torch.tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1)
+                std = torch.tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1)
+                input = input * std + mean
+                predicted_image = predicted_image * std + mean
+
                 depth *= 255
                 depth = depth.detach().cpu().numpy().astype(np.uint8)
                 predicted_image *= 255
