@@ -64,7 +64,7 @@ def train_one_epoch(
 
     for i, (input, depth, target) in enumerate(tqdm(train_dataloader)):
         input, depth, target = input.to(device), depth.to(device), target.to(device)
-
+        import ipdb;ipdb.set_trace()
         optimizer.zero_grad()
         output = model(input)
 
@@ -175,7 +175,6 @@ def validate(
     with torch.no_grad():
         for i, (input, depth, target) in enumerate(tqdm(val_dataloader)):
             input, depth, target = input.to(device), depth.to(device), target.to(device)
-
             output = model(input)
             predicted_depth_map, predicted_class = output
 

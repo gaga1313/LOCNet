@@ -5,7 +5,7 @@ import time
 import json
 import os
 
-from src.data.create_dataset import GeiDataset, get_image_transform
+from src.data.create_dataset import GeiDataset, get_shared_transform
 
 from src.sl_utils import accuracy
 from src.models import locnet, autoencoder
@@ -48,7 +48,7 @@ def load_results(file_path):
 
 
 def main():
-    model_path = "/cifs/data/tserre_lrs/projects/prj_model_vs_human/LOCNet/checkpoints/trial12/model_best.pth.tar"
+    model_path = "/cifs/data/tserre_lrs/projects/prj_model_vs_human/LOCNet/checkpoints/trial26/model_best.pth.tar"
     data_dir = "/cifs/data/tserre_lrs/projects/prj_model_vs_human/model-vs-human/model-vs-human/datasets"
 
     trial = model_path.split("/")[-2]
@@ -58,10 +58,10 @@ def main():
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     # model = locnet().to(device)
-    model = autoencoder().to(device)
+    model = autoencoder(n_classes = 3).to(device)
     model.load_state_dict(torch.load(model_path)["state_dict"])
 
-    image_transform = get_image_transform()
+    image_transform = get_shared_transform(False)
 
     accuracies = {}
     filters = [

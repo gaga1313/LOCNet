@@ -186,7 +186,8 @@ class GeiDataset(Dataset):
         label = self.labels[idx]
 
         image = Image.open(img_path).convert("RGB")
-
+        image = T.ToTensor()(image)
+        
         if self.image_transform:
             image = self.image_transform(image)
 
@@ -196,6 +197,7 @@ class GeiDataset(Dataset):
 class DualTransform:
     def __init__(self, transform):
         self.transform = transform
+        self.depth_transform = get_shared_transform(False)
 
     def __call__(self, image, depth):
         seed = int(time.time())
@@ -204,7 +206,7 @@ class DualTransform:
             image = self.transform(image)
         torch.manual_seed(seed)
         if self.transform is not None:
-            depth = self.transform(depth)
+            depth = self.depth_transform(depth)
         return image, depth
 
 
