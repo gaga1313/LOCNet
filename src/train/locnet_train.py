@@ -64,7 +64,7 @@ def train_one_epoch(
 
     for i, (input, depth, target) in enumerate(tqdm(train_dataloader)):
         input, depth, target = input.to(device), depth.to(device), target.to(device)
-        import ipdb;ipdb.set_trace()
+        # import ipdb;ipdb.set_trace()
         optimizer.zero_grad()
         output = model(input)
 
