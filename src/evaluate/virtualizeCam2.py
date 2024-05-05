@@ -93,7 +93,10 @@ def TestOnOneImage(image_path):
     trans = torchvision.transforms.Compose([
             torchvision.transforms.ToPILImage(),
             torchvision.transforms.Resize((256, 256)),
-            torchvision.transforms.CenterCrop((224, 224))
+            torchvision.transforms.CenterCrop((224, 224)),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    
         ])
     
 
@@ -106,6 +109,7 @@ def TestOnOneImage(image_path):
     #print("One:", img.shape)
     if len(np.array(img).shape) == 2:
         img = np.stack([img] *3, axis=-1)
+
     img = torchvision.transforms.ToTensor()(img)
     # if len(np.array(img).shape) == 3 and np.array(img).shape[0] == 1:
     #     img = img.reshape(224, 224)
@@ -113,7 +117,7 @@ def TestOnOneImage(image_path):
     # img= img.reshape(1, 3, 224, 224)
     # img = Image.fromarray(img)
     img = trans(img)
-    img = torchvision.transforms.ToTensor()(img)
+ #   img = torchvision.transforms.ToTensor()(img)
     img= img.reshape(1, 3, 224, 224)
 
     #print("One:", img.shape)
@@ -122,11 +126,20 @@ def TestOnOneImage(image_path):
 
 
 def TestOnOriginalImage(image_path):
+    trans = torchvision.transforms.Compose([
+            torchvision.transforms.Resize((256, 256)),
+            torchvision.transforms.CenterCrop((224, 224)),
+        ])
     image = np.array(Image.open(image_path))
     if len(image.shape) == 2:
         image = np.stack([image] * 3, axis=-1)
+    image = torchvision.transforms.ToTensor()(image)
     print("Original:", image.shape)
-    return image/ 255
+    image = trans(image)
+    image = np.array(image)
+    image = np.transpose(image, (1, 2, 0))
+
+    return image
 
 def visualize_cam(heatmap):
     plt.imshow(heatmap, cmap='jet', interpolation='bilinear')
@@ -134,13 +147,23 @@ def visualize_cam(heatmap):
     plt.show()
     
 def NormalProcess(image_path):
+    trans = torchvision.transforms.Compose([
+            torchvision.transforms.Resize((256, 256)),
+            torchvision.transforms.CenterCrop((224, 224))
+        ])
+    
     image = np.array(Image.open(image_path))
     rgb_img = np.float32(image) / 255
+
     print("RGB", rgb_img.shape)
     # check 
     if len(rgb_img.shape) == 2:
         rgb_img = np.stack([rgb_img] * 3, axis=-1)
     print("RGB after", rgb_img.shape)
+    rgb_img = torchvision.transforms.ToTensor()(rgb_img)
+    rgb_img = trans(rgb_img)
+    rgb_img = np.array(rgb_img)
+    rgb_img = np.transpose(rgb_img, (1, 2, 0))
     input_tensor = preprocess_image(rgb_img,
                                 mean=[0.485, 0.456, 0.406],
                                 std=[0.229, 0.224, 0.225])
@@ -171,8 +194,8 @@ def CamDisplayBase(filename= None,outlayer = False):
     # Convert the cam_image for visualization
     #cam_image = np.uint8(255 * cam_image)
     
-    cam = np.uint8(255*grayscale_cams[0, :])
-    cam = cv2.merge([cam, cam, cam])
+    # cam = np.uint8(255*grayscale_cams[0, :])
+    # cam = cv2.merge([cam, cam, cam])
     # images = np.hstack((np.uint8(255*img) , cam_image))
     # images = np.hstack( cam_image)
     # Image.fromarray(images)
@@ -202,8 +225,8 @@ def CamDisplayBest(filename= None,outlayer = False):
         # Overlay heatmap on original image
         cam_image = show_cam_on_image(img , heatmap_resized, use_rgb=True)
     
-    cam = np.uint8(255*grayscale_cams[0, :])
-    cam = cv2.merge([cam, cam, cam])
+    # cam = np.uint8(255*grayscale_cams[0, :])
+    # cam = cv2.merge([cam, cam, cam])
     #images = np.hstack((np.uint8(255*img) , cam_image))
     result_image = Image.fromarray(cam_image)
     
